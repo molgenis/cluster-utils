@@ -37,7 +37,7 @@ function showHelp() {
   # Display commandline help on STDOUT.
   #
   cat <<EOH
-=============================================================================================
+===============================================================================================================
  Lists quota status for the current user and its groups (default).
 
  Usage:
@@ -46,10 +46,29 @@ function showHelp() {
 
 OPTIONS:
 
-   -a   List quota for all groups instead of only for the groups the user executing this script is a member of (root user only).
+   -a   List quota for all groups instead of only for the groups the user executing this script is a member of 
+        (root user only).
 
- Details:
+Details:
 
+   The report will show 11 columns:
+   
+    1 Quota type = one of:
+       (U) = user quota
+       (P) = (private) group quota: group with only one user and mostly used for home dirs.
+       (G) = (regular) group quota: group with multiple users.
+       (F) = file set quota: in our setup different tech to manage quota for a group with multiple users.
+    2 Path/Filesystem = (part of) a storage system controlled by the quota settings listed.
+    3 used   = total amount of disk space your data consumes.
+    4 quota  = soft limit for space.
+    5 limit  = hard limit for space.
+    6 grace  = days left before the timer for space quota expires.
+    7 used   = total number of files and folders your data consists of.
+    8 quota  = the soft limit for the number of files and folder.
+    9 limit  = the hard limit for the number of files and folders.
+   10 grace  = days left before the timer for the number of files and folders quota expires.
+   11 status = whether you exceed your quota or not.
+   
    Grace is the time you can temporarily exceed the quota (soft limit) up to max the hard limit.
    When there is no grace time left the soft limit will temporarily become a hard limit 
    until the amount of used resources drops below the quota, which will reset the timer.
@@ -59,13 +78,7 @@ OPTIONS:
     * when the hard limit has been exceeded.
    Grace is reported as remaining time when the quota (soft) limit has been exceeded, 
    but the hard limit has not been reached yet and the grace timer has not yet expired.
-
-   The first column labelled as (T) lists quota Type, which is one of:
-      (U) = user quota
-      (P) = (private) group quota: group with only one user and mostly used for home dirs.
-      (G) = (regular) group quota: group with multiple users.
-      (F) = file set quota
-=============================================================================================
+===============================================================================================================
 
 EOH
   #
@@ -119,7 +132,7 @@ function getFileSetQuotaForGPFS() {
   local _fs_name="${_group}" # fileset_name used for mmlsquota commandline tool
   local _QUOTA='/usr/lpp/mmfs/bin/mmlsquota'
   local _BSIZE='1'
-  local _BUNIT='G'
+  local _BUNIT='T'
   local _size_used=2
   local _size_quota=3
   local _size_limit=4
@@ -439,7 +452,7 @@ fi
 # Display header.
 #
 quota_report_header_header=$(printf "${format_hh}" '' 'Total size of files and folders' 'Total number of files and folders')
-quota_report_header=$(printf "${format}" 'T' 'Path/Filesystem' 'space' 'quota' 'limit' 'grace' 'amount' 'quota' 'limit' 'grace' 'Status')
+quota_report_header=$(printf "${format}" 'T' 'Path/Filesystem' 'used' 'quota' 'limit' 'grace' 'used' 'quota' 'limit' 'grace' 'Status')
 echo "${SEP_DOUBLE}"
 echo "${quota_report_header_header}"
 echo "${quota_report_header}"
