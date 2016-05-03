@@ -204,39 +204,85 @@ function getGroupQuotaForLustreFS() {
   #
   # Loop over Logical File Systems (LFS-ses).
   #
-  for _LFS in $(awk '$3 == "lustre" {print $2}' /proc/mounts | sort)
+  for _FS in $(awk '$3 == "lustre" {print $2}' /proc/mounts | sort)
   do
+    #
+    # Define quota type.
+    #
     local _quota_type='G' # default.
+    if [ "${_group}" == "${MY_USER}" ]; then
+      _quota_type='P'
+    fi
     #
     # Handle exceptions in paths, group names, etc.
     #
-    if [ "${_group}" == ${DEPLOY_ADMIN_GROUP} ]; then
+    if [[ ${_FS} == '/mnt/'* ]]; then
       #
-      # Deploy Admins (depad) group only uses specific LFS-ses.
+      # We are dealing with a complete FS.
       #
-      if [[ ${_LFS} != '/apps'* ]] && [[ ${_LFS} != '/.envsync'* ]] ; then
-        continue
+      local _fs_type='complete'
+      if [ "${_group}" == ${DEPLOY_ADMIN_GROUP} ]; then
+        #
+        # Deploy Admins (depad) group only uses specific LFS-ses.
+        #
+        if [[ -d "${_FS}/apps" ]]; then
+          _FS="${_FS}/apps"
+        elif [[ -d "${_FS}/.envsync" ]]; then
+          _FS="${_FS}/.envsync"
+        else
+          continue
+        fi
+      elif [ "${_group}" == "${MY_USER}" ]; then
+        #
+        # User's private group only uses /home LFS.
+        #
+        if [[ -d "${_FS}/home" ]]; then
+          _FS="${_FS}/home"
+        else
+          continue
+        fi
+      else
+        #
+        # User's regular group only uses /groups/... LFS.
+        #
+        if [[ -d "${_FS}/groups/${_group}" ]]; then
+          _FS="${_FS}/groups/${_group}"
+        else
+          continue
+        fi
       fi
-    elif [ "${_group}" == "${MY_USER}" ]; then
+    else 
       #
-      # User's private group only uses /home LFS.
+      # We are dealing with bind mounts of sub folders of a complete FS.
       #
-      if [ "${_LFS}" != '/home'* ]; then
-        continue
-      fi
-      _quota_type='P'
-    else
-      #
-      # User's regular group only uses /groups/... LFS.
-      #
-      if [[ "${_LFS}" != '/groups/'${_group}'/'* ]]; then
-        continue
+      local _fs_type='partial'
+      if [ "${_group}" == ${DEPLOY_ADMIN_GROUP} ]; then
+        #
+        # Deploy Admins (depad) group only uses specific LFS-ses.
+        #
+        if [[ ${_FS} != '/apps'* ]] && [[ ${_FS} != '/.envsync'* ]] ; then
+          continue
+        fi
+      elif [ "${_group}" == "${MY_USER}" ]; then
+        #
+        # User's private group only uses /home LFS.
+        #
+        if [ "${_FS}" != '/home'* ]; then
+          continue
+        fi
+      else
+        #
+        # User's regular group only uses /groups/... LFS.
+        #
+        if [[ "${_FS}" != '/groups/'${_group}'/'* ]]; then
+          continue
+        fi
       fi
     fi
-    local _lfs_quota="$(lfs quota -q -h -g ${_group} ${_LFS} 2> /dev/null | tr -d '\n')"  || reportError ${LINENO} $?
-    IFS=' ' read -a _body_values   <<< $(echo "${_lfs_quota}" | tail -n 1)                || reportError ${LINENO} $?
+    local _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | tr -d '\n')"  || reportError ${LINENO} $?
+    IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}" | tail -n 1)                || reportError ${LINENO} $?
     if [[ ! -z ${_body_values[0]:-} && ${#_body_values[@]:-} -eq 9 ]]; then
-      declare -a _quota_values=("${_LFS}" 
+      declare -a _quota_values=("${_FS}" 
                  "${_body_values[${_size_used}]}"  "${_body_values[${_size_quota}]}"  "${_body_values[${_size_limit}]}"  "${_body_values[${_size_grace}]}" 
                  "${_body_values[${_files_used}]}" "${_body_values[${_files_quota}]}" "${_body_values[${_files_limit}]}" "${_body_values[${_files_grace}]}")
       printQuota "${_quota_type}" "${_quota_values[@]}"
@@ -380,29 +426,20 @@ DEPLOY_ADMIN_GROUP='umcg-depad'
 #  * Sort the remaining groups in alphabetical order and
 #  * If MY_USER is a member of the DEPLOY_ADMIN_GROUP move that one to the top of the list.
 #
-IFS=' ' read -a MY_GROUPS <<< "$(id -Gn | \
-                                 sed "s/${MY_USER} //" | \
-                                 tr ' ' '\n' | sort | tr '\n' ' ' | \
-                                 sed "s/\(.*\) ${DEPLOY_ADMIN_GROUP}\(.*\)/${DEPLOY_ADMIN_GROUP} \1\2/")"
+IFS=' ' read -a MY_GROUPS <<< "$(id -Gn)"
+
 #
 # Choose customised quota binary and associated first column length.
 #
 OPTIONS="--show-mntpoint --hide-device"
 QUOTA="${MY_DIR}/quota-30-left"
-first_column_length=30
 #
 # Formatting constants.
 #
-SEP_SINGLE='----------------------------------------------------------------------------------------------------------------------------------------------------------'
-SEP_DOUBLE='=========================================================================================================================================================='
-format="(%1s) %-${first_column_length}s | %10s  %10s  %10s  %15s | %10s  %10s  %10s  %15s | %9b\n"
-format_hh="    %-${first_column_length}s | %51s | %51s |\n"
-
-# Longer output version:
-#QUOTA="${MY_DIR}/quota-50-left"
-#SEP_SINGLE="${SEP_SINGLE}------------------"
-#SEP_DOUBLE="${SEP_DOUBLE}=================="
-#first_column_length=50
+first_column_prefix_width=14 #default
+base_width=121
+SEP_SINGLE_CHAR='-'
+SEP_DOUBLE_CHAR='='
 
 #
 ##
@@ -444,9 +481,39 @@ fi
 #
 declare -a QUOTA_GROUPS=("${MY_GROUPS[@]:-}")
 if [ ${ALL_GROUPS} -eq 1 ]; then
-  IFS=' ' read -a group_folders_on_this_server <<< "$(ls -1 /groups/ | sort | tr '\n' ' ')"
+  if [[ -d /groups/ ]]; then
+    IFS=' ' read -a group_folders_on_this_server <<< "$(ls -1 /groups/ | sort | tr '\n' ' ')"
+    first_column_prefix_width=8
+  else
+    IFS=' ' read -a group_folders_on_this_server <<< "$(find /mnt/*/groups/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort | tr '\n' ' ')"
+    first_column_prefix_width=21
+  fi
   IFS=' ' read -a QUOTA_GROUPS <<< $(printf '%s\n' ${MY_GROUPS[@]} ${group_folders_on_this_server[@]} | sort -u | tr '\n' ' ')
 fi
+
+#
+# Filter groups for which to report quota status.
+#  * Remove a (private) group with the same name as MY_USER from the list if present.
+#  * Sort the remaining groups in alphabetical order and
+#  * If MY_USER is a member of the DEPLOY_ADMIN_GROUP move that one to the top of the list.
+#
+IFS=' ' read -a QUOTA_GROUPS <<< "$(echo "${QUOTA_GROUPS[@]}" | \
+                                    sed "s/${MY_USER} //" | \
+                                    tr ' ' '\n' | sort | tr '\n' ' ' | \
+                                    sed "s/\(.*\) ${DEPLOY_ADMIN_GROUP}\(.*\)/${DEPLOY_ADMIN_GROUP} \1\2/")"
+
+#
+# Compute length of longest group name to adjust layout.
+#
+longest_group_length=$(echo "${QUOTA_GROUPS[@]}" | \
+                       tr ' ' '\n' | \
+                       wc -L)
+first_column_width=$((${first_column_prefix_width}+${longest_group_length}))
+total_width=$((4+${first_column_width}+${base_width}))
+format="(%1s) %-${first_column_width}s | %10s  %10s  %10s  %15s | %10s  %10s  %10s  %15s | %9b\n"
+format_hh="    %-${first_column_width}s | %51s | %51s |\n"
+SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
+SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 
 #
 # Display header.
