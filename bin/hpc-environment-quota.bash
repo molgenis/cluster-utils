@@ -48,6 +48,8 @@ OPTIONS:
 
    -a   List quota for all groups instead of only for the groups the user executing this script is a member of 
         (root user only).
+   -p   Plain text output: Disables coloring and other formatting using shell escape codes. 
+        Usefull when redirecting the output to a log file.
 
 Details:
 
@@ -214,6 +216,10 @@ function getGroupQuotaForLustreFS() {
       _quota_type='P'
     fi
     #
+    # Initialize var to display subgroup quota in report.
+    #
+    local _FS_for_report='NA'
+    #
     # Handle exceptions in paths, group names, etc.
     #
     if [[ ${_FS} == '/mnt/'* ]]; then
@@ -245,8 +251,28 @@ function getGroupQuotaForLustreFS() {
         #
         # User's regular group only uses /groups/... LFS.
         #
-        if [[ -d "${_FS}/groups/${_group}" ]]; then
-          _FS="${_FS}/groups/${_group}"
+        local _regex='([a-z]*-[a-z]*)(-rar[0-9]*)$'
+        local _main_group=${_group} # default
+        if [[ ${_group} =~ ${_regex} ]]; then
+          _main_group=${BASH_REMATCH[1]}
+          local _sub_group=${BASH_REMATCH[2]}
+          if [ ${PLAIN_TEXT} -eq 1 ]; then
+            _FS_for_report="${_FS}/groups/${_group}"
+          else
+            _FS_for_report="${_FS}/groups/${_main_group}\e[7m${_sub_group}\e[27m"
+            #
+            # Compute difference in length between this group and the longest one 
+            # to add padding spaces to workaround a printf bug for %b strings with shell escapes.
+            #
+            local _padding_length=$((${longest_group_length} - ${#_group}))
+            if [[ ${_padding_length} -gt 0 ]]; then
+              local _padding=$(head -c ${_padding_length} /dev/zero | tr '\0' ' ')
+              _FS_for_report="${_FS_for_report}${_padding}"
+            fi
+          fi
+        fi
+        if [[ -d "${_FS}/groups/${_main_group}" ]]; then
+          _FS="${_FS}/groups/${_main_group}"
         else
           continue
         fi
@@ -274,7 +300,8 @@ function getGroupQuotaForLustreFS() {
         #
         # User's regular group only uses /groups/... LFS.
         #
-        if [[ "${_FS}" != '/groups/'${_group}'/'* ]]; then
+        local _main_group=${_group/%-rar[0-9]*/} # Remove optional Restricted Access Release sub group suffix (-rar[0-9]).
+        if [[ "${_FS}" != '/groups/'${_main_group}'/'* ]]; then
           continue
         fi
       fi
@@ -282,7 +309,10 @@ function getGroupQuotaForLustreFS() {
     local _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | tr -d '\n')"  || reportError ${LINENO} $?
     IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}" | tail -n 1)                || reportError ${LINENO} $?
     if [[ ! -z ${_body_values[0]:-} && ${#_body_values[@]:-} -eq 9 ]]; then
-      declare -a _quota_values=("${_FS}" 
+      if [ "${_FS_for_report}" == 'NA' ]; then
+        _FS_for_report="${_FS}"
+      fi
+      declare -a _quota_values=("${_FS_for_report}" 
                  "${_body_values[${_size_used}]}"  "${_body_values[${_size_quota}]}"  "${_body_values[${_size_limit}]}"  "${_body_values[${_size_grace}]}" 
                  "${_body_values[${_files_used}]}" "${_body_values[${_files_quota}]}" "${_body_values[${_files_limit}]}" "${_body_values[${_files_grace}]}")
       printQuota "${_quota_type}" "${_quota_values[@]}"
@@ -348,7 +378,6 @@ function printQuota() {
   local _quota_type="${1}"
   shift
   declare -a local _quota_values=("${@}")
-  #echo "DEBUG _quota_values: ${_quota_values[@]}"
   #
   # Check and append status.
   #
@@ -361,10 +390,10 @@ function printQuota() {
   for offset in {1,5}; do
     #echo "DEBUG _quota_values ${offset}: ${_quota_values[${offset}]}"
     if [[ "${_quota_values[${offset}]}" =~ ${_regex} ]]; then
-      _status='\e[5mEXCEEDED!\e[25m'
+      _status=${QUOTA_EXCEEDED_WARNING}
     fi
     #if [[ ${_quota_values[${offset}]} -gt ${_quota_values[${offset}+1]} ]]; then
-    #  _status='\e[5mEXCEEDED!\e[25m'
+    #  _status=${QUOTA_EXCEEDED_WARNING}
     #fi
   done
   for offset in {4,8}; do
@@ -373,7 +402,7 @@ function printQuota() {
     fi
     _quota_values[${offset}]=${_quota_values[${offset}]/day/ day}
     if [[ "${_quota_values[${offset}]}" != 'none' ]]; then
-      _status='\e[5mEXCEEDED!\e[25m'
+      _status=${QUOTA_EXCEEDED_WARNING}
     fi
   done
   #
@@ -451,13 +480,17 @@ SEP_DOUBLE_CHAR='='
 # Get commandline arguments.
 #
 ALL_GROUPS=0
-while getopts ":ha" opt; do
+PLAIN_TEXT=0
+while getopts ":hap" opt; do
   case $opt in
     h)
       showHelp
       ;;
     a)
       ALL_GROUPS=1
+      ;;
+    p)
+      PLAIN_TEXT=1
       ;;
     \?)
       reportError ${LINENO} '1' "Invalid option -${OPTARG}. Try \"$(basename $0) -h\" for help."
@@ -488,7 +521,11 @@ if [ ${ALL_GROUPS} -eq 1 ]; then
     IFS=' ' read -a group_folders_on_this_server <<< "$(find /mnt/*/groups/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort | tr '\n' ' ')"
     first_column_prefix_width=21
   fi
-  IFS=' ' read -a QUOTA_GROUPS <<< $(printf '%s\n' ${MY_GROUPS[@]} ${group_folders_on_this_server[@]} | sort -u | tr '\n' ' ')
+  IFS=' ' read -a QUOTA_GROUPS <<< $(printf '%s\n' \
+                                     ${MY_GROUPS[@]} \
+                                     ${group_folders_on_this_server[@]} \
+                                     umcg-gonl-rar1 umcg-gonl-rar2 umcg-gonl-rar3 umcg-gonl-rar4 \
+                                     | sort -u | tr '\n' ' ')
 fi
 
 #
@@ -502,6 +539,8 @@ IFS=' ' read -a QUOTA_GROUPS <<< "$(echo "${QUOTA_GROUPS[@]}" | \
                                     tr ' ' '\n' | sort | tr '\n' ' ' | \
                                     sed "s/\(.*\) ${DEPLOY_ADMIN_GROUP}\(.*\)/${DEPLOY_ADMIN_GROUP} \1\2/")"
 
+#echo "DEBUG: QUOTA_GROUPS= ${QUOTA_GROUPS[@]}"
+
 #
 # Compute length of longest group name to adjust layout.
 #
@@ -510,10 +549,19 @@ longest_group_length=$(echo "${QUOTA_GROUPS[@]}" | \
                        wc -L)
 first_column_width=$((${first_column_prefix_width}+${longest_group_length}))
 total_width=$((4+${first_column_width}+${base_width}))
-format="(%1s) %-${first_column_width}s | %10s  %10s  %10s  %15s | %10s  %10s  %10s  %15s | %9b\n"
+format="(%1s) %-${first_column_width}b | %10s  %10s  %10s  %15s | %10s  %10s  %10s  %15s | %9b\n"
 format_hh="    %-${first_column_width}s | %51s | %51s |\n"
 SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
 SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
+
+#
+# Configure warning messages with or without additional formatting.
+#
+if [ ${PLAIN_TEXT} -eq 1 ]; then
+  QUOTA_EXCEEDED_WARNING='EXCEEDED!'
+else
+  QUOTA_EXCEEDED_WARNING='\e[5mEXCEEDED!\e[25m'
+fi
 
 #
 # Display header.
