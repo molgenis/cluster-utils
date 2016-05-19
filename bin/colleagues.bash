@@ -5,14 +5,14 @@
 ### Environment and bash sanity.
 ##
 #
-if [[ "${BASH_VERSINFO}" -lt 4 || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
-  echo "Sorry, you need at least bash 4.x to use ${0}." >&2
-  exit 1
-fi
 set -u
 set -e
 umask 0027
 memyselfandi=$(basename $0)
+if [[ "${BASH_VERSINFO}" -lt 4 || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo "Sorry, you need at least bash 4.x to use ${memyselfandi}." >&2
+  exit 1
+fi
 
 #
 ##
@@ -70,6 +70,9 @@ else
     fi
 fi
 
+#
+# List members per group.
+#
 for group in ${groups[@]}; do \
     echo "${SEP_DOUBLE}"
     echo "Group ${group} contains members:"
