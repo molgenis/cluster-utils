@@ -23,6 +23,12 @@ umask 0027
 export TMPDIR='/tmp/'
 
 #
+# Make sure dots are used as decimal separator.
+#
+LANG='en_US.UTF-8'
+LC_NUMERIC="${LANG}"
+
+#
 # Trap all exit signals: HUP(1), INT(2), QUIT(3), TERM(15), ERR
 #
 trap 'reportError $LINENO' HUP INT QUIT TERM EXIT ERR
@@ -81,6 +87,8 @@ Details:
     * when the hard limit has been exceeded.
    Grace is reported as remaining time when the quota (soft) limit has been exceeded, 
    but the hard limit has not been reached yet and the grace timer has not yet expired.
+   
+   Values are always reported with a dot as the decimal seperator (LC_NUMERIC="en_US.UTF-8").
 ===============================================================================================================
 
 EOH
@@ -457,7 +465,7 @@ function printQuota() {
 #
 function reformatQuota() {
   local _quota_value="${1}"
-  local _regex='^([0-9.][0-9.]*)([kMGTP]?)'
+  local _regex='^([0-9.,][0-9.,]*)([kMGTP]?)'
   if [[ "${_quota_value}" =~ ${_regex} ]]; then
     local _int="${BASH_REMATCH[1]}"
     local _unit="${BASH_REMATCH[2]}"
@@ -472,7 +480,7 @@ function reformatQuota() {
       _quota_value="${_formatted_number} ${_unit}"
     fi
   fi
-  printf "%s" "${_quota_value}"
+  printf '%s' "${_quota_value}"
 }
 
 #
@@ -480,7 +488,7 @@ function reformatQuota() {
 #
 function convert2TiB () {
   local _value="${1}"
-  local _regex='^([0-9.][0-9.]*) ([kMG])'
+  local _regex='^([0-9.,][0-9.,]*) ([kMG])'
   local _base=1024
   local _exp=4
   local _divide=1
@@ -497,7 +505,7 @@ function convert2TiB () {
     #
     # Return input "as is".
     #
-    printf "%s" "${_value}"
+    printf '%s' "${_value}"
   fi
 }
 
