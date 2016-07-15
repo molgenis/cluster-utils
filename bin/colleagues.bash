@@ -24,8 +24,8 @@ function _Usage() {
     echo
     echo 'Usage:'
     echo "       ${memyselfandi}               Lists members of my groups active on this server."
-    echo "       ${memyselfandi} all           lists members of all groups active on this server."
-    echo "       ${memyselfandi} some-group    lists members of group some-group."
+    echo "       ${memyselfandi} all           Lists members of all groups active on this server."
+    echo "       ${memyselfandi} some-group    Lists members of group some-group."
     echo
 }
 
