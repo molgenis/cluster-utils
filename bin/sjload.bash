@@ -37,19 +37,6 @@ function _Usage() {
     echo
 }
 
-  #echo "========================================"
-  #echo "  Environment Variables:                "
-  #echo "    STUBL_SJEFF_PCPU=(ps|top)           "
-  #echo "      ps - use %cpu from ps command.    "
-  #echo "           This is the average cpu use  "
-  #echo "           over the life of the job.    "
-  #echo " "
-  #echo "     top - use %cpu from top command.   "
-  #echo "           This is a 1 second snapshot  "
-  #echo "           of cpu usage and reflects    "
-  #echo "           current job behavior.        "
-  #echo "========================================"
-
 #
 ##
 ### Main.
