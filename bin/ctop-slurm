@@ -771,6 +771,20 @@ sub _GetInfo {
 			my $job_stat_record = `${sstat} --parsable2 --noheader -o '${sstat_format}' -j ${job}.batch 2>&1`;
 			$? and do { _PrintWarning('ERROR: Retrieving data using ' . $sstat . ' failed for job ' . $job . '.') };
 			
+			#
+			# For large clusters it may take a (long) time to fetch and parse the data from the various
+			# SLURM commandline tools resulting in outdated data. Currently disabled for our small clusters 
+			# as this creates would create more RPC calls and hence more load while the walltime values 
+			# are not that old to create significant bias.
+			#
+			#my $updated_walltime = `${squeue} --noheader -o '%M' -j ${job} 2>/dev/null`;
+			#$? and do { _PrintWarning('ERROR: Retrieving updated walltime using ' . $squeue . ' failed for job ' . $job . '.') };
+			#
+			#if (defined($updated_walltime) && $updated_walltime ne '') {
+			#	chomp($updated_walltime);
+			#	${$jobs}{$job}{'walltime_u'} = _FormatTime($updated_walltime);
+			#}
+			
 			chomp($job_stat_record);
 			my @job_stats = split(/\|/, $job_stat_record);
 		
@@ -853,13 +867,17 @@ sub _FormatTime {
 		$seconds = $2;
 	} elsif ($time eq 'INVALID') {
 		#
-		# "INVALID" usually pops up just after a job started running on a node 
-		# and CPU time is not available yet.
+		# "INVALID" is usually the result of time synchronisation issues: check your NTP configs. 
+		# When the clocks are only a little bit off, 
+		# INVALID pops up just after a job started running on a node and will vanish later on...
+		# The larger the descrpency in time between machines, the longer it will take before you get 
+		# something that resembles a timestamp... but is actually wrong.
 		#
 		$days    = '0';
 		$hours   = '0';
 		$minutes = '0';
 		$seconds = '0';
+		_PrintWarning('ERROR: invalid timestamp. Check NTP configs of alle machines in your cluster.');
 	} else {
 		die "FATAL: Unsupported time value: $time.";
 	}
