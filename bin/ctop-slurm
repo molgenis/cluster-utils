@@ -214,7 +214,7 @@ _LoadConfig("$ENV{HOME}/.ctoprc");
 -e $squeue   or chomp($squeue   = `which squeue 2>/dev/null`);
 -e $sstat    or chomp($sstat    = `which sstat 2>/dev/null`);
 -e $scontrol or chomp($scontrol = `which scontrol 2>/dev/null`);
--e $sinfo    or chomp($scontrol = `which sinfo 2>/dev/null`);
+-e $sinfo    or chomp($sinfo    = `which sinfo 2>/dev/null`);
 -e $squeue   or die 'FATAL: Cannot find squeue.' .   "\n";
 -e $sstat    or die 'FATAL: Cannot find sstat.' .    "\n";
 -e $scontrol or die 'FATAL: Cannot find scontrol.' . "\n";
@@ -629,7 +629,7 @@ sub _GetInfo {
 	
 	my $sinfo_format = '%N|%c|%B|%m';
 	my @node_info_records2 = `${sinfo} --clusters ${cluster} --all --noheader -o '${sinfo_format}' -N 2>/dev/null`;
-	$? and do { _PrintWarning('Retrieving data using ' . $scontrol . ' failed for cluster ' . $cluster . '.') };
+	$? and do { _PrintWarning('Retrieving data using ' . $sinfo . ' failed for cluster ' . $cluster . '.') };
 	
 	my $squeue_format='%A|%u|%q|%T|%N|%D|%C|%m|%l|%M|%j';
 	my @job_info_records = `${squeue} --clusters ${cluster} --all --noheader -o '${squeue_format}' 2>/dev/null`;
