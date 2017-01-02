@@ -276,7 +276,7 @@ SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
 SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 
 format_metadata_period="Cluster usage report from %-19s to %-19s.\n"
-format_metadata_partitions="   %-10s  %12s  %12s\n"
+format_metadata_partitions="   %-14s  %12s  %12s\n"
 
 #
 # Display metadata and headers.
