@@ -29,6 +29,24 @@ function _Usage() {
     echo
 }
 
+function _PrintUserInfo() {
+    local _user="${1}"
+    local _format="${2}"
+    #echo "DEBUG: _user   = ${_user}."
+    #echo "DEBUG: _format = ${_format}."
+    IFS=':' read -a _user_info <<< "$(getent passwd ${_user} | cut -d ':' -s -f 1,5)"
+    if [[ ${#_user_info[@]:0} -eq 2 ]]; then
+        printf "${_format}" "${_user_info[@]}";
+    else
+        if [ ${_user} == 'MIA' ]; then
+            printf "${_format}" "${_user}" '\e[2mMissing In Action.\e[22m';
+        else
+            printf "${_format}" "${_user}" '\e[2mNo details available.\e[22m';
+        fi
+    fi
+}
+
+
 #
 ##
 ### Main.
@@ -36,12 +54,16 @@ function _Usage() {
 #
 
 filesystem=''
-format="%-25s %-75s\n"
 total_width=101
+base_header_length=21
+body_format="%-25b %-76b\n"
+header_format="%-${total_width}b\n"
 SEP_SINGLE_CHAR='-'
 SEP_DOUBLE_CHAR='='
 SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
 SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
+PADDING=$(head -c $((${total_width}-${base_header_length})) /dev/zero | tr '\0' ' ')
+groups_metadata_cache_dir="${HPC_ENV_PREFIX}/.tmp/groups_metadata_cache"
 
 #
 # Compile list of groups.
@@ -71,18 +93,57 @@ else
 fi
 
 #
-# List members per group.
+# List owners, datamanagers and members per group.
 #
+regex='([^=]+)=([^=]+)'
 for group in ${groups[@]}; do \
     echo "${SEP_DOUBLE}"
-    echo "Group ${group} contains members:"
+    group_header="\e[7mColleagues in ${group} group:${PADDING:${#group}}\e[27m"
+    printf "${header_format}" "${group_header}"
+    echo "${SEP_DOUBLE}"
+    #
+    # Fetch owner(s) and datamanager(s) from cached group meta-data.
+    #
+    cache_file="${groups_metadata_cache_dir}/${group}"
+    declare -a owners=('MIA')
+    declare -a dms=('MIA')
+    if [ -r ${cache_file} ]; then
+        while IFS=$'\n' read -r metadata_line; do
+            #echo "DEBUG: parsing meta-data line ${metadata_line}."
+            if [[ "${metadata_line}" =~ ${regex} ]]; then
+                key="${BASH_REMATCH[1]}"
+                val="${BASH_REMATCH[2]}"
+                #echo "DEBUG: key = ${key} | val = ${val}."
+                if [ "${key}" == 'owner' ]; then
+                    owners=($(printf '%s' "${val}" | tr ',' ' '))
+                    #echo "DEBUG: owners = ${owners[@]}."
+                elif [ "${key}" == 'datamanager' ]; then
+                    dms=($(printf '%s' "${val}" | tr ',' ' '))
+                    #echo "DEBUG: dms = ${dms[@]}."
+                else
+                    echo "WARN: Cannot parse meta-data line ${metadata_line}."
+                fi
+            fi
+        done < "${cache_file}"
+        printf "${header_format}" "\e[1m${group} owner(s):\e[21m"
+        echo "${SEP_SINGLE}"
+        for owner in ${owners[@]:-}; do
+            #echo "DEBUG: processing owner = ${owner}."
+            _PrintUserInfo "${owner}" "${body_format}"
+        done
+        echo "${SEP_DOUBLE}"
+        printf "${header_format}" "\e[1m${group} datamanager(s):\e[21m"
+        echo "${SEP_SINGLE}"
+        for dm in ${dms[@]:-}; do
+            _PrintUserInfo "${dm}" "${body_format}"
+        done
+        echo "${SEP_DOUBLE}"
+    fi
+    printf "${header_format}" "\e[1m${group} member(s):\e[21m"
     echo "${SEP_SINGLE}"
     IFS=' ' read -a group_members <<< "$(getent group ${group} | sed 's/.*://' | tr ',' '\n' | sort | tr '\n' ' ')"
     for group_member in ${group_members[@]:-}; do
-        IFS=':' read -a member_info <<< "$(getent passwd ${group_member} | cut -d ':' -s -f 1,5)"
-        if [[ ${#member_info[@]:0} -eq 2 ]]; then
-            printf "${format}" "${member_info[@]}";
-        fi
+        _PrintUserInfo "${group_member}" "${body_format}"
     done
 done
 echo "${SEP_DOUBLE}"
