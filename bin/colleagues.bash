@@ -64,6 +64,9 @@ SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
 SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 PADDING=$(head -c $((${total_width}-${base_header_length})) /dev/zero | tr '\0' ' ')
 groups_metadata_cache_dir="${HPC_ENV_PREFIX}/.tmp/groups_metadata_cache"
+if [ -d ${groups_metadata_cache_dir} ]; then
+    groups_metadata_cache_timestamp="$(date --date="$(LC_DATE=C stat --printf='%y' "${groups_metadata_cache_dir}" | cut -d ' ' -f1,2)" "+%Y-%m-%dT%H:%M:%S")"
+fi
 
 #
 # Compile list of groups.
@@ -98,7 +101,7 @@ fi
 regex='([^=]+)=([^=]+)'
 for group in ${groups[@]}; do \
     echo "${SEP_DOUBLE}"
-    group_header="\e[7mColleagues in ${group} group:${PADDING:${#group}}\e[27m"
+    group_header="\e[7mColleagues in the ${group} group:${PADDING:${#group}}\e[27m"
     printf "${header_format}" "${group_header}"
     echo "${SEP_DOUBLE}"
     #
@@ -146,4 +149,7 @@ for group in ${groups[@]}; do \
         _PrintUserInfo "${group_member}" "${body_format}"
     done
 done
+echo "${SEP_DOUBLE}"
+echo 'NOTE: Group memberships were fetched live from LDAP. All other data was fetched from the LDAP cache:'
+echo "      ${groups_metadata_cache_dir} last updated on ${groups_metadata_cache_timestamp:-unknown}"
 echo "${SEP_DOUBLE}"
