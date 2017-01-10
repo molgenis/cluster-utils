@@ -162,6 +162,12 @@ if [ ! -z ${1:-} ]; then
 fi
 
 #
+# TODO: Check if dependencies are available.
+#
+SCONTROL='scontrol'
+SREPORT='sreport'
+
+#
 # Determine reporting period.
 #
 # Example: start=2016-10-01T00:00:00 end=2016-11-01T00:00:00
@@ -209,15 +215,15 @@ fi
 # Note: The older the reporting period the larger the chance that 
 #       currently available resources != resources available in reporting period.
 #
-declare -a scontrol_partitions=($(scontrol -a -o show partition | tr ' ' '|' | tr "\n" ' ')) || reportError ${LINENO} $? "Failed to get available resources from scontrol."
-declare    scontrol_cluster="$(scontrol -a show config | grep ClusterName | grep -o '[^= ]*$')"
+declare -a scontrol_partitions=($(${SCONTROL} -a -o show partition | tr ' ' '|' | tr "\n" ' ')) || reportError ${LINENO} $? "Failed to get available resources from scontrol."
+declare    scontrol_cluster="$(${SCONTROL} -a show config | grep ClusterName | grep -o '[^= ]*$')"
 
 #
 # Get resource usage data from sreport.
 #
-declare -a sreport_cpu=($(sreport cluster UserUtilizationByAccount -P -n -T CPU -t Percent format=Cluster,Account,Login,Used start=${START} end=${END} | tr "\n" ' ')) \
+declare -a sreport_cpu=($(${SREPORT} cluster UserUtilizationByAccount -P -n -T CPU -t Percent format=Cluster,Account,Login,Used start=${START} end=${END} | tr "\n" ' ')) \
                     || reportError ${LINENO} $? "Failed to get UserUtilizationByAccount sreport for TRES CPU."
-declare -a sreport_mem=($(sreport cluster UserUtilizationByAccount -P -n -T MEM -t Percent format=Cluster,Account,Login,Used start=${START} end=${END} | tr "\n" ' ')) \
+declare -a sreport_mem=($(${SREPORT} cluster UserUtilizationByAccount -P -n -T MEM -t Percent format=Cluster,Account,Login,Used start=${START} end=${END} | tr "\n" ' ')) \
                     || reportError ${LINENO} $? "Failed to get UserUtilizationByAccount sreport for TRES MEM."
 
 #
@@ -270,7 +276,7 @@ SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
 SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 
 format_metadata_period="Cluster usage report from %-19s to %-19s.\n"
-format_metadata_partitions="   %-10s  %12s  %12s\n"
+format_metadata_partitions="   %-14s  %12s  %12s\n"
 
 #
 # Display metadata and headers.
