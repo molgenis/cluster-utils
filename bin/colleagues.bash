@@ -55,7 +55,7 @@ function _PrintUserInfo() {
 
 filesystem=''
 total_width=101
-base_header_length=21
+base_header_length=25
 body_format="%-25b %-76b\n"
 header_format="%-${total_width}b\n"
 SEP_SINGLE_CHAR='-'
@@ -128,21 +128,21 @@ for group in ${groups[@]}; do \
                 fi
             fi
         done < "${cache_file}"
-        printf "${header_format}" "\e[1m${group} owner(s):\e[21m"
+        printf "${header_format}" "\e[1m${group} owner(s):\e[22m"
         echo "${SEP_SINGLE}"
         for owner in ${owners[@]:-}; do
             #echo "DEBUG: processing owner = ${owner}."
             _PrintUserInfo "${owner}" "${body_format}"
         done
         echo "${SEP_DOUBLE}"
-        printf "${header_format}" "\e[1m${group} datamanager(s):\e[21m"
+        printf "${header_format}" "\e[1m${group} datamanager(s):\e[22m"
         echo "${SEP_SINGLE}"
         for dm in ${dms[@]:-}; do
             _PrintUserInfo "${dm}" "${body_format}"
         done
         echo "${SEP_DOUBLE}"
     fi
-    printf "${header_format}" "\e[1m${group} member(s):\e[21m"
+    printf "${header_format}" "\e[1m${group} member(s):\e[22m"
     echo "${SEP_SINGLE}"
     IFS=' ' read -a group_members <<< "$(getent group ${group} | sed 's/.*://' | tr ',' '\n' | sort | tr '\n' ' ')"
     for group_member in ${group_members[@]:-}; do
