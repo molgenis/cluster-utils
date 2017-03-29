@@ -729,7 +729,7 @@ sub _GetInfo {
 			#
 			# Get actual resource usage.
 			#
-			my $job_stat_record = `${sstat} --parsable2 --noheader -o '${sstat_format}' -j ${job}.batch 2>&1`;
+			my $job_stat_record = `${sstat} --parsable2 --noheader -o '${sstat_format}' -j ${job}.batch`;
 			$? and do { _PrintWarning('ERROR: Retrieving data using ' . $sstat . ' failed for job ' . $job . '.') };
 			
 			#
@@ -756,6 +756,11 @@ sub _GetInfo {
 				if ($job_stat_record =~ m/there was an error with the request to ([^\s]+) rc . Invalid user id/) {
 					my $unpatched_node = $1;
 					_PrintWarning('ERROR: ' . $sstat . ' on node ' . $unpatched_node . ' was not patched to allow retrieval of stats for jobs from other users.');
+				} elsif ($job_stat_record =~ m/^$/) {
+					#
+					# Sstat data on resource usage may not be available (yet) when a job started recently on a node: this is normal.
+					#_PrintWarning('DEBUG: No ' . $sstat . ' data available for job ' . $job . '.');
+					#
 				} else {
 					_PrintWarning('ERROR: Parsing ' . $sstat . ' data failed for job ' . $job . ' ('. $job_stat_record . ').');
 				}
