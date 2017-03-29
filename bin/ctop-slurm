@@ -622,25 +622,29 @@ sub _GetInfo {
 	my ($cluster, $nodes, $jobs, $state_count) = @_;
 	
 	#
-	# Use SLURM commands to get all data.
+	# Use SLURM commands to get most of the data for all nodes and all jobs.
+	# (For jobs in a state that consumes resources we'll need to run an additional sstat command per job.)
 	#
-	my @node_info_records = `${scontrol} --clusters ${cluster} -o show nodes 2>/dev/null`;
-	$? and do { _PrintWarning('Retrieving data using ' . $scontrol . ' failed for cluster ' . $cluster . '.') };
-	
 	my $sinfo_format = '%N|%c|%B|%m';
-	my @node_info_records2 = `${sinfo} --clusters ${cluster} --all --noheader -o '${sinfo_format}' -N 2>/dev/null`;
+	my @node_info_records = `${sinfo} --clusters ${cluster} --all --noheader -o '${sinfo_format}' -N 2>/dev/null`;
 	$? and do { _PrintWarning('Retrieving data using ' . $sinfo . ' failed for cluster ' . $cluster . '.') };
 	
-	my $squeue_format='%A|%u|%q|%T|%N|%D|%C|%m|%l|%M|%j';
+	my @node_info_records2 = `${scontrol} --clusters ${cluster} -o show nodes 2>/dev/null`;
+	$? and do { _PrintWarning('Retrieving data using ' . $scontrol . ' failed for cluster ' . $cluster . '.') };
+	
+	my $squeue_format = '%A|%u|%q|%T|%N|%D|%C|%m|%l|%M|%j';
 	my @job_info_records = `${squeue} --clusters ${cluster} --all --noheader -o '${squeue_format}' 2>/dev/null`;
+	$? and do { _PrintWarning('Retrieving data using ' . $squeue . ' failed for cluster ' . $cluster . '.') };
+	
+	my $squeue_format2 = 'jobid,tres:';
+	my @job_info_records2 = `${squeue} --clusters ${cluster} --all --noheader -O '${squeue_format2}' 2>/dev/null`;
 	$? and do { _PrintWarning('Retrieving data using ' . $squeue . ' failed for cluster ' . $cluster . '.') };
 	
 	#
 	# Parse node info.
 	#  1. Get some info first from sinfo and delete outdated info.
-	#  2. Get the remaining and bulk of the info from scontrol.
 	#
-	foreach my $node_info_record (@node_info_records2) {
+	foreach my $node_info_record (@node_info_records) {
 		
 		chomp($node_info_record);
 		my @node_info = split(/\|/, $node_info_record);
@@ -666,50 +670,6 @@ sub _GetInfo {
 		
 	}
 	
-	foreach my $node_info_record (@node_info_records) {
-		
-		chomp($node_info_record);
-		#
-		# Create pipe seperated fields as opposed to space seperated ones as the fields may contain spaces too.
-		# Then split fields based on the pipes and create hash entries for the key=value pairs of the fields.
-		#
-		$node_info_record =~ s/\s([^\s]+=)/\|$1/g;
-		my %node_info = map {split('=', $_)} (split(/\|/, $node_info_record));
-		my $node = $node_info{'NodeName'};
-		
-		#
-		# Store new info for this node.
-		#
-		${$nodes}{$cluster}{$node}{'seen'}        = 1;
-		${$nodes}{$cluster}{$node}{'cores_total'} = $node_info{'CPUTot'};
-		${$nodes}{$cluster}{$node}{'state'}       = $node_info{'State'};
-		${$nodes}{$cluster}{$node}{'mem_total'}   = $node_info{'RealMemory'};
-		${$nodes}{$cluster}{$node}{'features'}    = $node_info{'Features'};
-		${$nodes}{$cluster}{$node}{'arch'}        = $node_info{'Arch'};
-		
-		#
-		# Detailed status info like load and assigned resources.
-		#
-		${$nodes}{$cluster}{$node}{'status'}{'load'}           = $node_info{'CPULoad'};
-		${$nodes}{$cluster}{$node}{'status'}{'cores_alloc'}    = $node_info{'CPUAlloc'};
-		${$nodes}{$cluster}{$node}{'status'}{'mem_alloc'}      = $node_info{'AllocMem'};
-		${$nodes}{$cluster}{$node}{'status'}{'mem_free'}       = $node_info{'FreeMem'};
-		${$nodes}{$cluster}{$node}{'status'}{'slurm_version'}  = $node_info{'Version'};
-		${$nodes}{$cluster}{$node}{'status'}{'local_tmp_disk'} = $node_info{'TmpDisk'};
-		
-		#
-		# Updated cluster status and total resouces.
-		#
-		${$state_count}{'_nodes_total'}++;
-		${$state_count}{'_cores_total'} += $node_info{'CPUTot'};
-		${$state_count}{$node_info{'State'}}++;
-		if ($node_info{'CPUAlloc'} > 0) {
-			${$state_count}{'_nodes_allocated'}++;
-			${$state_count}{'_cores_allocated'} += $node_info{'CPUAlloc'};
-		}
-		
-	}
-	
 	#
 	# Parse job info.
 	#
@@ -722,6 +682,7 @@ sub _GetInfo {
 	foreach my $job_info_record (@job_info_records) {
 		
 		chomp($job_info_record);
+		next if ($job_info_record =~ m/^CLUSTER:/);
 		my @job_info = split(/\|/, $job_info_record);
 		
 		next unless(scalar(@job_info) == 11);
@@ -787,7 +748,7 @@ sub _GetInfo {
 			
 			chomp($job_stat_record);
 			my @job_stats = split(/\|/, $job_stat_record);
-		
+			
 			if(scalar(@job_stats) == 6) {
 				${$jobs}{$job}{'cputime_u'} = _FormatTime($job_stats[1]);
 				${$jobs}{$job}{'mem_u'}     = _FormatMemInGB($job_stats[3]);
@@ -802,6 +763,86 @@ sub _GetInfo {
 				${$jobs}{$job}{'mem_u'}     = '?';
 			}
 		}
+	}
+	
+	#
+	# Parse additional node info.
+	#  2. Get the remaining and bulk of the info from scontrol.
+	#
+	foreach my $node_info_record (@node_info_records2) {
+		
+		chomp($node_info_record);
+		#
+		# Create pipe seperated fields as opposed to space seperated ones as the fields may contain spaces too.
+		# Then split fields based on the pipes and create hash entries for the key=value pairs of the fields.
+		#
+		$node_info_record =~ s/\s([^\s]+=)/\|$1/g;
+		my %node_info = map {split('=', $_)} (split(/\|/, $node_info_record));
+		my $node = $node_info{'NodeName'};
+		
+		#
+		# Store new info for this node.
+		#
+		${$nodes}{$cluster}{$node}{'seen'}        = 1;
+		${$nodes}{$cluster}{$node}{'cores_total'} = $node_info{'CPUTot'};
+		${$nodes}{$cluster}{$node}{'state'}       = $node_info{'State'};
+		${$nodes}{$cluster}{$node}{'mem_total'}   = $node_info{'RealMemory'};
+		${$nodes}{$cluster}{$node}{'features'}    = $node_info{'Features'};
+		${$nodes}{$cluster}{$node}{'arch'}        = $node_info{'Arch'};
+		
+		#
+		# Detailed status info like load and assigned resources.
+		#
+		${$nodes}{$cluster}{$node}{'status'}{'load'}           = $node_info{'CPULoad'};
+		${$nodes}{$cluster}{$node}{'status'}{'cores_alloc'}    = $node_info{'CPUAlloc'};
+		${$nodes}{$cluster}{$node}{'status'}{'mem_alloc'}      = $node_info{'AllocMem'};
+		${$nodes}{$cluster}{$node}{'status'}{'mem_free'}       = $node_info{'FreeMem'};
+		${$nodes}{$cluster}{$node}{'status'}{'slurm_version'}  = $node_info{'Version'};
+		${$nodes}{$cluster}{$node}{'status'}{'local_tmp_disk'} = $node_info{'TmpDisk'};
+		
+		#
+		# Updated cluster status and total resouces.
+		#
+		${$state_count}{'_nodes_total'}++;
+		${$state_count}{'_cores_total'} += $node_info{'CPUTot'};
+		${$state_count}{$node_info{'State'}}++;
+		if ($node_info{'CPUAlloc'} > 0) {
+			${$state_count}{'_nodes_allocated'}++;
+			${$state_count}{'_cores_allocated'} += $node_info{'CPUAlloc'};
+		}
+		
+	}
+	
+	#
+	# Parse additional job info.
+	#
+	#  key suffixes in the large jobs data structure:
+	#   _r = requested.
+	#   _u = used.
+	#   _s = state of job efficiency; Determined by used / requested.
+	#
+	# The amount of requested memory in the previously parsed "squeue -o FORMAT" output may be either mem per node or mem per core.
+	# As we want to display total mem per job and jobs are restricted to a single node we need mem per node.
+	#
+	foreach my $job_info_record (@job_info_records2) {
+		
+		chomp($job_info_record);
+		next if ($job_info_record =~ m/^CLUSTER:/);
+		my @job_info = split(/\s+/, $job_info_record);
+		
+		next unless(scalar(@job_info) == 2);
+		
+		my $job   = $job_info[0];
+		my $tres  = $job_info[1];
+		
+		if ($tres =~ m/mem=([^,]+)/) {
+			my $mem_r = $1 . 'M'; # For some reason mem always reported in MB when squeue formatting requested this way.
+			${$jobs}{$job}{'mem_r'} = _FormatMemInGB($mem_r);
+		} else {
+			${$jobs}{$job}{'mem_r'} = '?';
+			_PrintWarning('ERROR: Parsing ' . $squeue . ' data failed for job ' . $job . ' ('. $job_info_record . ').');
+		}
+	
 	}
 }
 
