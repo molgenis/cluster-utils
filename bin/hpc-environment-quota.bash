@@ -143,7 +143,7 @@ function getFileSetQuotaForGPFS() {
   local _fs_name="${_group}" # fileset_name used for mmlsquota commandline tool
   local _QUOTA='/usr/lpp/mmfs/bin/mmlsquota'
   local _BSIZE='1'
-  local _BUNIT='T'
+  local _BUNIT='G'
   local _size_used=2
   local _size_quota=3
   local _size_limit=4
@@ -175,8 +175,22 @@ function getFileSetQuotaForGPFS() {
     local _fileset_quota="$(${_QUOTA} -j ${_fs_name} ${_FILESYS} --block-size ${_BSIZE}${_BUNIT} 2> /dev/null)"  || reportError ${LINENO} $?
     IFS=' ' read -a _body_values   <<< $(echo "${_fileset_quota}" | tail -n 1)                                   || reportError ${LINENO} $?
     if [[ ! -z ${_body_values[0]:-} && ${#_body_values[@]:-} -eq 14 ]]; then
+      #
+      # Reformat GiB -> TiB if BUNIT was 'G'.
+      #
+      for offset in {${_size_used},${_size_quota},${_size_limit}}; do
+        if [[ "${_body_values[${offset}]}" -gt 1024 ]]; then
+          #echo "DEBUG: larger than 1024: ${_body_values[${offset}]}"
+          _body_values[${offset}]=$(printf "%'.1fT" $(echo "scale=1; ${_body_values[${offset}]}/1024" | bc))
+        else
+          _body_values[${offset}]="${_body_values[${offset}]}G"
+        fi
+      done
+      #
+      # Declare quota values array and display values.
+      #
       declare -a _quota_values=("${_fs_path}" 
-                 "${_body_values[${_size_used}]}${_BUNIT}" "${_body_values[${_size_quota}]}${_BUNIT}" "${_body_values[${_size_limit}]}${_BUNIT}" "${_body_values[${_size_grace}]}" 
+                 "${_body_values[${_size_used}]}" "${_body_values[${_size_quota}]}" "${_body_values[${_size_limit}]}" "${_body_values[${_size_grace}]}" 
                  "${_body_values[${_files_used}]}" "${_body_values[${_files_quota}]}" "${_body_values[${_files_limit}]}" "${_body_values[${_files_grace}]}")
       printQuota 'F' "${_quota_values[@]}"
     fi
