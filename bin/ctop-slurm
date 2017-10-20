@@ -735,7 +735,7 @@ sub _GetInfo {
 			#
 			# For large clusters it may take a (long) time to fetch and parse the data from the various
 			# SLURM commandline tools resulting in outdated data. Currently disabled for our small clusters 
-			# as this creates would create more RPC calls and hence more load while the walltime values 
+			# as this would create more RPC calls and hence more load while the walltime values 
 			# are not that old to create significant bias.
 			#
 			#my $updated_walltime = `${squeue} --noheader -o '%M' -j ${job} 2>/dev/null`;
