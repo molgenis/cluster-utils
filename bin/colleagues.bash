@@ -14,6 +14,14 @@ if [[ "${BASH_VERSINFO}" -lt 4 || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   exit 1
 fi
 
+set +e
+SSH_LDAP_HELPER="$(which ssh-ldap-helper 2>/dev/null)"
+set -e
+SSH_LDAP_HELPER="${SSH_LDAP_HELPER:-/usr/libexec/openssh/ssh-ldap-helper}"
+if [ ! -x ${SSH_LDAP_HELPER:-} ]; then
+    echo "WARN: Cannot find ssh-ldap-helper, which is required to determine if users are (in)active."
+fi
+
 #
 ##
 ### Functions.
@@ -36,12 +44,17 @@ function _PrintUserInfo() {
     #echo "DEBUG: _format = ${_format}."
     IFS=':' read -a _user_info <<< "$(getent passwd ${_user} | cut -d ':' -s -f 1,5)"
     if [[ ${#_user_info[@]:0} -eq 2 ]]; then
-        printf "${_format}" "${_user_info[@]}";
+        local _public_key="$(${SSH_LDAP_HELPER} -s ${_user})"
+        if [[ -n "${_public_key}" ]]; then
+            printf "${_format}" "${_user_info[@]}";
+        else
+            printf "${_format}" "${_user_info[0]}" "\e[2m${_user_info[1]} (Inactive)\e[22m";
+        fi
     else
         if [ ${_user} == 'MIA' ]; then
             printf "${_format}" "${_user}" '\e[2mMissing In Action.\e[22m';
         else
-            printf "${_format}" "${_user}" '\e[2mNo details available.\e[22m';
+            printf "${_format}" "${_user}" '\e[2mNo details available (Not entitled to use this server/machine).\e[22m';
         fi
     fi
 }
