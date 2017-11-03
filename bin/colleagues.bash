@@ -43,12 +43,12 @@ function _PrintUserInfo() {
     #echo "DEBUG: _user   = ${_user}."
     #echo "DEBUG: _format = ${_format}."
     IFS=':' read -a _user_info <<< "$(getent passwd ${_user} | cut -d ':' -s -f 1,5)"
-    if [[ ${#_user_info[@]:0} -eq 2 ]]; then
+    if [[ ${#_user_info[@]:0} -ge 1 ]]; then
         local _public_key="$(${SSH_LDAP_HELPER} -s ${_user})"
         if [[ -n "${_public_key}" ]]; then
-            printf "${_format}" "${_user_info[@]}";
+            printf "${_format}" "${_user_info[0]}" "${_user_info[1]:-NA}";
         else
-            printf "${_format}" "${_user_info[0]}" "\e[2m${_user_info[1]} (Inactive)\e[22m";
+            printf "${_format}" "${_user_info[0]}" "\e[2m${_user_info[1]:-NA} (Inactive)\e[22m";
         fi
     else
         if [ ${_user} == 'MIA' ]; then
