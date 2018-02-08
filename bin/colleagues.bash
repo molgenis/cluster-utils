@@ -37,24 +37,74 @@ function _Usage() {
     echo
 }
 
+function _getLoginExpirationTime() {
+    local _user="${1}"
+    local _user_cache_file="${users_metadata_cache_dir}/${_user}"
+    local _loginExpirationTime="9999-99-99"
+    local _regex='^loginExpirationTime=([0-9]{4})([0-9]{2})([0-9]{2}).+Z$'
+
+    if [ -r ${_user_cache_file} ]; then 
+        while IFS='' read -r _line || [[ -n "$_line" ]]; do
+            if [[ "${_line}" =~ ${_regex} ]]; then
+                _loginExpirationTime="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
+            fi
+        done < "${_user_cache_file}"
+        else
+            _loginExpirationTime="9999-99-99"
+    fi
+    echo "${_loginExpirationTime}"
+}
+
+  declare -a group_members_sorted=()
+  function _sortOnDate() {
+  local _userArray=("$@")
+  declare -A hashmap
+
+  for _user in ${_userArray[@]}; do
+      _date=$(_getLoginExpirationTime "${_user}")
+      hashmap["${_user}"]="${_date}"
+  done
+
+
+  # sort hashMap and store sorted users in $sorted_keys[@]
+  IFS=$'\n'; set -f
+  group_members_sorted=($(
+  for user in "${!hashmap[@]}"; do
+      printf '%s:%s\n' "$user" "${hashmap[$user]}"
+  done | sort -t : -k 2n | sed 's/:.*//'))
+  unset IFS; set +f
+
+}
+
 function _PrintUserInfo() {
     local _user="${1}"
     local _format="${2}"
+    local _loginExpirationTime="${3:--}"
     #echo "DEBUG: _user   = ${_user}."
     #echo "DEBUG: _format = ${_format}."
+    local _user_cache_file="${users_metadata_cache_dir}/${_user}"
+    declare -a owners=('MIA')
+    declare -a dms=('MIA')
     IFS=':' read -a _user_info <<< "$(getent passwd ${_user} | cut -d ':' -s -f 1,5)"
+    
+    if [ ${_loginExpirationTime} == '9999-99-99' ]; then
+        _loginExpirationTime='-'  
+    fi
+        
     if [[ ${#_user_info[@]:0} -ge 1 ]]; then
         local _public_key="$(${SSH_LDAP_HELPER} -s ${_user})"
         if [[ -n "${_public_key}" ]]; then
-            printf "${_format}" "${_user_info[0]}" "${_user_info[1]:-NA}";
+            printf "${_format}" "${_user_info[0]}" "${_loginExpirationTime:-NA}" "${_user_info[1]:-NA}";
+            #printf "${_format}" "${_user_info[0]}" "${_user_info[1]:-NA}" "${_user_info[2]}";
         else
-            printf "${_format}" "${_user_info[0]}" "\e[2m${_user_info[1]:-NA} (Inactive)\e[22m";
+            printf "${_format}" "${_user_info[0]}" "${_loginExpirationTime:-NA}" "\e[2m${_user_info[1]:-NA} (Inactive)\e[22m";
+            #printf "${_format}" "${_user_info[0]}" "\e[2m${_loginExpirationTime:-NA}\e[22m" "\e[2m${_user_info[1]:-NA} (Inactive)\e[22m";
         fi
     else
         if [ ${_user} == 'MIA' ]; then
-            printf "${_format}" "${_user}" '\e[2mMissing In Action.\e[22m';
+            printf "${_format}" "${_user}" "${_loginExpirationTime:--}" '\e[2mMissing In Action.\e[22m';
         else
-            printf "${_format}" "${_user}" '\e[2mNo details available (Not entitled to use this server/machine).\e[22m';
+            printf "${_format}" "${_user}" "${_loginExpirationTime:-NA}" '\e[2mNo details available (Not entitled to use this server/machine).\e[22m';
         fi
     fi
 }
@@ -67,9 +117,10 @@ function _PrintUserInfo() {
 #
 
 filesystem=''
-total_width=101
+total_width=110
 base_header_length=25
-body_format="%-25b %-76b\n"
+body_format="%-25b %-17b %-70b\n"
+#body_format="%-25s %76s %15s\n"
 header_format="%-${total_width}b\n"
 SEP_SINGLE_CHAR='-'
 SEP_DOUBLE_CHAR='='
@@ -77,6 +128,8 @@ SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
 SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 PADDING=$(head -c $((${total_width}-${base_header_length})) /dev/zero | tr '\0' ' ')
 groups_metadata_cache_dir="${HPC_ENV_PREFIX}/.tmp/groups_metadata_cache"
+users_metadata_cache_dir="${HPC_ENV_PREFIX}/.tmp/users_metadata_cache"
+
 if [ -d ${groups_metadata_cache_dir} ]; then
     groups_metadata_cache_timestamp="$(date --date="$(LC_DATE=C stat --printf='%y' "${groups_metadata_cache_dir}" | cut -d ' ' -f1,2)" "+%Y-%m-%dT%H:%M:%S")"
 fi
@@ -158,8 +211,14 @@ for group in ${groups[@]}; do \
     printf "${header_format}" "\e[1m${group} member(s):\e[22m"
     echo "${SEP_SINGLE}"
     IFS=' ' read -a group_members <<< "$(getent group ${group} | sed 's/.*://' | tr ',' '\n' | sort | tr '\n' ' ')"
-    for group_member in ${group_members[@]:-}; do
-        _PrintUserInfo "${group_member}" "${body_format}"
+    
+#    if [ sort == TRUE ]
+    _sortOnDate "${group_members[@]:--}"
+    #group_members="${group_members_sorted}"
+
+    for group_member in ${group_members_sorted[@]:-}; do
+        experationDate=$(_getLoginExpirationTime "${group_member}")
+        _PrintUserInfo "${group_member}" "${body_format}" "${experationDate}"
     done
 done
 echo "${SEP_DOUBLE}"
