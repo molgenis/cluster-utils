@@ -37,6 +37,9 @@ function _Usage() {
     echo
 }
 
+#
+# Gets username, return enddate useraccount.
+#
 function _GetLoginExpirationTime() {
     local _user="${1}"
     local _user_cache_file="${users_metadata_cache_dir}/${_user}"
@@ -57,7 +60,10 @@ function _GetLoginExpirationTime() {
 
 #global group_members_sorted array
 declare -a group_members_sorted=()
-  
+
+#
+# sorts user hashmap on date
+#
 function _SortOnDate() {
   local _userArray=("$@")
   declare -A _hashmap
@@ -81,13 +87,13 @@ function _SortOnDate() {
 function _PrintUserInfo() {
     local _user="${1}"
     local _format="${2}"
-    local _loginExpirationTime="${3:--}"
+    local _loginExpirationTime="${3:-NA}"
     local _user_cache_file="${users_metadata_cache_dir}/${_user}"
     declare -a owners=('MIA')
     declare -a dms=('MIA')
     IFS=':' read -a _user_info <<< "$(getent passwd ${_user} | cut -d ':' -s -f 1,5)"
     
-    if [ ${_loginExpirationTime} == '9999-99-99' ]; then
+    if [[ ${_loginExpirationTime} == '9999-99-99' || ${_loginExpirationTime} == 'NA' ]]; then
         _loginExpirationTime='-'  
     fi
         
@@ -95,10 +101,8 @@ function _PrintUserInfo() {
         local _public_key="$(${SSH_LDAP_HELPER} -s ${_user})"
         if [[ -n "${_public_key}" ]]; then
             printf "${_format}" "${_user_info[0]}" "${_loginExpirationTime:-NA}" "${_user_info[1]:-NA}";
-            #printf "${_format}" "${_user_info[0]}" "${_user_info[1]:-NA}" "${_user_info[2]}";
         else
             printf "${_format}" "${_user_info[0]}" "${_loginExpirationTime:-NA}" "\e[2m${_user_info[1]:-NA} (Inactive)\e[22m";
-            #printf "${_format}" "${_user_info[0]}" "\e[2m${_loginExpirationTime:-NA}\e[22m" "\e[2m${_user_info[1]:-NA} (Inactive)\e[22m";
         fi
     else
         if [ ${_user} == 'MIA' ]; then
@@ -120,7 +124,6 @@ filesystem=''
 total_width=110
 base_header_length=25
 body_format="%-25b %-17b %-70b\n"
-#body_format="%-25s %76s %15s\n"
 header_format="%-${total_width}b\n"
 SEP_SINGLE_CHAR='-'
 SEP_DOUBLE_CHAR='='
