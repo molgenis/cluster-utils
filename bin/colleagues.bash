@@ -191,10 +191,10 @@ fi
 this_user="$(whoami)"
 regex='([^=]+)=([^=]+)'
 for group in ${groups[@]}; do \
-    #
-    # Skip private groups.
-    #
     if [[ "${group}" == ${this_user} ]]; then
+        #
+        # Skip private group.
+        #
         continue
     fi
     echo "${SEP_DOUBLE}"
