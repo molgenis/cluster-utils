@@ -37,7 +37,7 @@ function _Usage() {
     echo
 }
 
-function _getLoginExpirationTime() {
+function _GetLoginExpirationTime() {
     local _user="${1}"
     local _user_cache_file="${users_metadata_cache_dir}/${_user}"
     local _loginExpirationTime="9999-99-99"
@@ -55,22 +55,24 @@ function _getLoginExpirationTime() {
     echo "${_loginExpirationTime}"
 }
 
-  declare -a group_members_sorted=()
-  function _sortOnDate() {
+#global group_members_sorted array
+declare -a group_members_sorted=()
+  
+function _SortOnDate() {
   local _userArray=("$@")
-  declare -A hashmap
+  declare -A _hashmap
 
   for _user in ${_userArray[@]}; do
-      _date=$(_getLoginExpirationTime "${_user}")
-      hashmap["${_user}"]="${_date}"
+      _date=$(_GetLoginExpirationTime "${_user}")
+      _hashmap["${_user}"]="${_date}"
   done
 
 
   # sort hashMap and store sorted users in $sorted_keys[@]
   IFS=$'\n'; set -f
   group_members_sorted=($(
-  for user in "${!hashmap[@]}"; do
-      printf '%s:%s\n' "$user" "${hashmap[$user]}"
+  for user in "${!_hashmap[@]}"; do
+      printf '%s:%s\n' "$user" "${_hashmap[$user]}"
   done | sort -t : -k 2n | sed 's/:.*//'))
   unset IFS; set +f
 
@@ -80,8 +82,6 @@ function _PrintUserInfo() {
     local _user="${1}"
     local _format="${2}"
     local _loginExpirationTime="${3:--}"
-    #echo "DEBUG: _user   = ${_user}."
-    #echo "DEBUG: _format = ${_format}."
     local _user_cache_file="${users_metadata_cache_dir}/${_user}"
     declare -a owners=('MIA')
     declare -a dms=('MIA')
@@ -212,12 +212,10 @@ for group in ${groups[@]}; do \
     echo "${SEP_SINGLE}"
     IFS=' ' read -a group_members <<< "$(getent group ${group} | sed 's/.*://' | tr ',' '\n' | sort | tr '\n' ' ')"
     
-#    if [ sort == TRUE ]
-    _sortOnDate "${group_members[@]:--}"
-    #group_members="${group_members_sorted}"
+    _SortOnDate "${group_members[@]:--}"
 
     for group_member in ${group_members_sorted[@]:-}; do
-        experationDate=$(_getLoginExpirationTime "${group_member}")
+        experationDate=$(_GetLoginExpirationTime "${group_member}")
         _PrintUserInfo "${group_member}" "${body_format}" "${experationDate}"
     done
 done
