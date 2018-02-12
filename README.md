@@ -6,6 +6,7 @@ Collection of utilities / helper scripts to make life easier on our HPC clusters
 #### cfinger
 
 cfinger is finger on steroids: basic account details which you would also get from standard finger supplemented with public keys associated to accounts and group memberships.
+
 Example output:
 
 ```
@@ -32,15 +33,29 @@ ssh-rsa AAAAB3NzaC1yc....QR+zbmsAX0Mpw== [account]
 #### colleagues
 
 Lists all users of all groups a user is a member of. 
-Optionally you can specify a group and list only members of that specific group.
-User accounts are expanded to Real Names and email addresses. 
+Optionally you can specify:
+ * ```-g [group_name]``` to list only members of the specified group.
+ * ```-g all``` to list members of all groups.
+ * ```-e``` to sort group members by expiration date of their account.
+User accounts are expanded to Real Names and email addresses.
+
 Example output:
 ```
-===========================================================
-Group [group] contains members:
------------------------------------------------------------
-[account]        Real Name <r.name@fully.qualified.domain>
-===========================================================
+==============================================================================================================
+Colleagues in the [group] group:                                                                       
+==============================================================================================================
+[group] owner(s):                                                                             
+--------------------------------------------------------------------------------------------------------------
+[account]       YYYY-MM-DD        Real Name <r.name@fully.qualified.domain>
+==============================================================================================================
+[group] datamanager(s):                                                                       
+--------------------------------------------------------------------------------------------------------------
+[account]       YYYY-MM-DD        Real Name <r.name@fully.qualified.domain>
+==============================================================================================================
+[group] member(s):                                                                            
+--------------------------------------------------------------------------------------------------------------
+[account]       YYYY-MM-DD        Real Name <r.name@fully.qualified.domain>
+==============================================================================================================
 ```
 
 #### ctop
