@@ -128,7 +128,7 @@ SEP_DOUBLE_CHAR='='
 SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
 SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 PADDING=$(head -c $((${total_width}-${base_header_length})) /dev/zero | tr '\0' ' ')
-ldap_cache_dir="${HPC_ENV_PREFIX}/.tmp/ldap_cache"
+ldap_cache_dir="${HPC_ENV_PREFIX:-/apps}/.tmp/ldap_cache"
 
 if [[ -d "${ldap_cache_dir}" ]]; then
     ldap_cache_timestamp="$(date --date="$(LC_DATE=C stat --printf='%y' "${ldap_cache_dir}" | cut -d ' ' -f1,2)" "+%Y-%m-%dT%H:%M:%S")"
