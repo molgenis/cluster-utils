@@ -116,6 +116,12 @@ Node States: 3 IDLE | 1 IDLE+DRAIN | 7 MIXED
   L = 606877 [account]    regular-short   kallisto38                               R    1165   2500     22.3     40.0 0-00:13:33 0-05:59:00
 ```
 
+#### sjeff
+
+Slurm Job EFFiciency or sjeff for short provides an overview of finished jobs, the resources they requested and how efficient these were used.
+The job efficiency is a percentage and defined as: ``` used resources / requested resources * 100```.
+Note that for CPU core usage the average is reported whereas for Memory usage the max peak usage is reported. 
+
 #### quota
 
 Custom quota reporting tool for users. Lists quota for all groups a user is a member of. Example output:
