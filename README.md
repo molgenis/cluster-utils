@@ -6,6 +6,7 @@ Collection of utilities / helper scripts to make life easier on our HPC clusters
 #### cfinger
 
 cfinger is finger on steroids: basic account details which you would also get from standard finger supplemented with public keys associated to accounts and group memberships.
+
 Example output:
 
 ```
@@ -32,15 +33,29 @@ ssh-rsa AAAAB3NzaC1yc....QR+zbmsAX0Mpw== [account]
 #### colleagues
 
 Lists all users of all groups a user is a member of. 
-Optionally you can specify a group and list only members of that specific group.
-User accounts are expanded to Real Names and email addresses. 
+Optionally you can specify:
+ * ```-g [group_name]``` to list only members of the specified group.
+ * ```-g all``` to list members of all groups.
+ * ```-e``` to sort group members by expiration date of their account.
+User accounts are expanded to Real Names and email addresses.
+
 Example output:
 ```
-===========================================================
-Group [group] contains members:
------------------------------------------------------------
-[account]        Real Name <r.name@fully.qualified.domain>
-===========================================================
+==============================================================================================================
+Colleagues in the [group] group:                                                                       
+==============================================================================================================
+[group] owner(s):                                                                             
+--------------------------------------------------------------------------------------------------------------
+[account]       YYYY-MM-DD        Real Name <r.name@fully.qualified.domain>
+==============================================================================================================
+[group] datamanager(s):                                                                       
+--------------------------------------------------------------------------------------------------------------
+[account]       YYYY-MM-DD        Real Name <r.name@fully.qualified.domain>
+==============================================================================================================
+[group] member(s):                                                                            
+--------------------------------------------------------------------------------------------------------------
+[account]       YYYY-MM-DD        Real Name <r.name@fully.qualified.domain>
+==============================================================================================================
 ```
 
 #### ctop
@@ -100,6 +115,12 @@ Node States: 3 IDLE | 1 IDLE+DRAIN | 7 MIXED
   B = 606876 [account]    regular-short   kallisto37                               R    1685   2500     22.3     40.0 0-00:23:01 0-05:59:00
   L = 606877 [account]    regular-short   kallisto38                               R    1165   2500     22.3     40.0 0-00:13:33 0-05:59:00
 ```
+
+#### sjeff
+
+Slurm Job EFFiciency or sjeff for short provides an overview of finished jobs, the resources they requested and how efficient these were used.
+The job efficiency is a percentage and defined as: ``` used resources / requested resources * 100```.
+Note that for CPU core usage the average is reported whereas for Memory usage the max peak usage is reported. 
 
 #### quota
 
