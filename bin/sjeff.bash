@@ -303,7 +303,7 @@ function _time2Seconds() {
 
 function _mem2Bytes() {
 	local _slurm_mem="${1}"
-	local _regex='^([0-9][0-9]*)([BKMGT])[cn]?$'
+	local _regex='^([0-9][0-9.]*)([BKMGT])[cn]?$'
 	
 	if [[ "${_slurm_mem}" =~ ${_regex} ]]
 	then
@@ -313,8 +313,7 @@ function _mem2Bytes() {
 		echo "FATAL: memory as reported by Slurm command sacct in unsupported format; Got: ${_slurm_mem:-}." >&2
 		exit 1
 	fi
-	
-	local _mem_in_bytes="$((${_mem}*${mem_unit_scaling_factors[${_unit}]}))"
+	local _mem_in_bytes=$(printf "%.0f" "$(echo "scale=5; (${_mem}*${mem_unit_scaling_factors[${_unit}]})" | bc)")
 	echo -n "${_mem_in_bytes}"
 }
 
