@@ -105,6 +105,7 @@ function trapHandler() {
 	#
 	# Reset trap and exit.
 	#
+	echo -e "\e[0m\n" # reset all terminal formatting attributes.
 	trap - EXIT
 	exit ${_status}
 }
@@ -447,6 +448,11 @@ else
 			echo "FATAL: directory ${job_out_dir} does not exist or is not accessible. Check path and permissions".
 			exit 1
 		fi
+		if [[ "${#job_ids[@]:-0}" -lt '1' ]]
+		then
+			echo "FATAL: did not find any Job IDs in the footers of the ${job_out_dir}/*.out files."
+			exit 1
+		fi
 	elif [[ -n "${job_list_file:-}" ]]
 	then
 	if [[ -f "${job_list_file}" && -r "${job_list_file}" ]]
@@ -456,6 +462,11 @@ else
 				| sort -n | tr '\n' ','| sed 's/,$//')"
 		else
 			echo "FATAL: file ${job_list_file} does not exist or is not accessible. Check path and permissions".
+			exit 1
+		fi
+		if [[ "${#job_ids[@]:-0}" -lt '1' ]]
+		then
+			echo "FATAL: did not find any Job IDs in file ${job_list_file}."
 			exit 1
 		fi
 	fi
@@ -512,6 +523,6 @@ echo "${SEP_DOUBLE}"
 #
 # Exit cleanly on success.
 #
-echo -e "\e[0m" # reset all terminal formatting attributes.
+echo -e "\e[0m\n" # reset all terminal formatting attributes.
 trap - EXIT
 exit 0
