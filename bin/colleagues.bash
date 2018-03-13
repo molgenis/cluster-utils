@@ -181,6 +181,8 @@ else
             groups=("${group}")
         else
             _Usage
+            echo "ERROR: specified group ${group} does not exist."
+            exit 1
         fi
     fi
 fi
