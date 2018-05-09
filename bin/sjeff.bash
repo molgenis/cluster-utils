@@ -14,6 +14,11 @@ if [[ "${BASH_VERSINFO}" -lt 4 || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   exit 1
 fi
 
+#
+# Make sure dots are used as decimal separator.
+#
+export LC_ALL='en_US.UTF-8'
+
 SCRIPT_NAME="$(basename ${0})"
 SCRIPT_NAME="${SCRIPT_NAME%.*sh}"
 
