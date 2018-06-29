@@ -15,12 +15,12 @@ Tools to get reports on authentication & authorization settings and identities.
 - [cnodes](#-cnodes): Lists state of compute nodes.
 - [cqos](#-cqos): Lists details for all Quality of Service levels.
 - [cqueue](#-cqueue): Lists running and queued jobs.
-- [hpc-environment-slurm-report.bash](#-hpcenvironmentslurmreport): Creates reports on cluster usage as percentage of available resources for specified period (e.g. week, month, etc.).
+- [hpc-environment-slurm-report](#-hpc-environment-slurm-report): Creates reports on cluster usage as percentage of available resources for specified period (e.g. week, month, etc.).
 
 ### Tools for monitoring file system and quota status
 
 - [quota](#-quota): Lists quota for all shared file systems.
-- [hpc-environment-quota-report-for-PFS.bash](#-hpcenvironmentquotareportforPFS): Creates quota report for admins.
+- [hpc-environment-quota-report-for-PFS](#-hpc-environment-quota-report-for-PFS): Creates quota report for admins.
 
 #### <a name="caccounts"/> caccounts
 
@@ -214,7 +214,7 @@ JOBID    PARTITION  QOS             NAME                             USER       
 4864528  duo-pro    regular-medium  run_GS1_FinalReport_small_chr11  [user]         R   10:13  umcg-node017      2018-06-29T16:03:40  0.00011821347292
 ```
 
-#### <a name="hpcenvironmentslurmreport"/> hpc-environment-slurm-report.bash
+#### <a name="hpc-environment-slurm-report"/> hpc-environment-slurm-report
 
 Custom SLURM cluster reporting tool. Lists available resources and resource usage over a specified period of time. Example output:
 
@@ -259,7 +259,7 @@ Custom quota reporting tool for users. Lists quota for all groups a user is a me
 (F) /groups/[group]/tmp02    |     25.0 T      40.0 T      40.0 T             none |    169.0 k       0.0         0.0               none |        Ok
 ====================================================================================================================================================
 ```
-#### <a name="hpcenvironmentquotareportforPFS"/> hpc-environment-quota-report-for-PFS.bash
+#### <a name="hpc-environment-quota-report-for-PFS"/> hpc-environment-quota-report-for-PFS
 
 Custom quota reporting tool for admins. Lists quota for all groups on a Physical File System (PFS). Output is similar to that from the quota tool listed above.
 
