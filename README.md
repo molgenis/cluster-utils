@@ -20,7 +20,7 @@ Tools to get reports on authentication & authorization settings and identities.
 ### Tools for monitoring file system and quota status
 
 - [quota](#-quota): Lists quota for all shared file systems.
-- [hpc-environment-quota-report-for-PFS](#-hpc-environment-quota-report-for-PFS): Creates quota report for admins.
+- [hpc-environment-quota-report-for-PFS](#-hpc-environment-quota-report-for-pfs): Creates quota report for admins.
 
 #### <a name="caccounts"/> caccounts
 
@@ -259,7 +259,7 @@ Custom quota reporting tool for users. Lists quota for all groups a user is a me
 (F) /groups/[group]/tmp02    |     25.0 T      40.0 T      40.0 T             none |    169.0 k       0.0         0.0               none |        Ok
 ====================================================================================================================================================
 ```
-#### <a name="hpc-environment-quota-report-for-PFS"/> hpc-environment-quota-report-for-PFS
+#### <a name="hpc-environment-quota-report-for-pfs"/> hpc-environment-quota-report-for-PFS
 
 Custom quota reporting tool for admins. Lists quota for all groups on a Physical File System (PFS). Output is similar to that from the quota tool listed above.
 
