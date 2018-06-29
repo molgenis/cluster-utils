@@ -3,12 +3,45 @@ Collection of utilities / helper scripts to make life easier on our HPC clusters
 
 ## 1. List of tools.
 
-#### cfinger
+### AAI tools.
+Tools to get reports on authentication & authorization settings and identities.
+- [caccounts](#-caccounts): Lists details of Slurm cluster accounts.
+- [cfinger](#-cfinger): Lists details of a specific user's system/login account.
+- [colleagues](#-colleagues): Lists group owners, data managers and other regular group members.
+
+### Tools for monitoring cluster/job status
+- [ctop](#-ctop): Top-like overview of cluster status and resource usage.
+- [sjeff](#-sjeff): Lists Slurm Job EFFiciency for jobs.
+- [cnodes](#-cnodes): Lists state of compute nodes.
+- [cqos](#-cqos): Lists details for all Quality of Service levels.
+- [cqueue](#-cqueue): Lists running and queued jobs.
+- [hpc-environment-slurm-report.bash](#-hpc-environment-slurm-report.bash): Creates reports on cluster usage as percentage of available resources for specified period (e.g. week, month, etc.).
+
+### Tools for monitoring file system and quota status
+
+- [quota](#-quota): Lists quota for all shared file systems.
+- [hpc-environment-quota-report-for-PFS.bash](#-hpc-environment-quota-report-for-PFS.bash): Creates quota report for admins.
+
+#### <a name="caccounts"/> caccounts
+
+Wrapper for Slurm's sacctmgr command with custom output format to list which users are associated to which slurm accounts on which clusters.
+Example output:
+```
+   Cluster              Account                           User     Share          Def QOS                                   QOS
+---------- -------------------- ------------------------------ --------- ---------------- -------------------------------------
+  calculon root                                                        1 priority         [list of QoS account had access to]
+  calculon  root                root                                   1 priority         [list of QoS account had access to]
+  calculon  users                                                      1 regular          [list of QoS account had access to]
+  calculon   users              [1st_user]                             1 regular          [list of QoS account had access to]
+  calculon   users              [2nd_user]                             1 regular          [list of QoS account had access to]
+etc.
+```
+
+#### <a name="cfinger"/> cfinger
 
 cfinger is finger on steroids: basic account details which you would also get from standard finger supplemented with public keys associated to accounts and group memberships.
 
 Example output:
-
 ```
 ===========================================================
 Basic account details for [account]:
@@ -30,7 +63,7 @@ ssh-rsa AAAAB3NzaC1yc....QR+zbmsAX0Mpw== [account]
 ===========================================================
 ```
 
-#### colleagues
+#### <a name="colleagues"/> colleagues
 
 Lists all users of all groups a user is a member of. 
 Optionally you can specify:
@@ -58,7 +91,7 @@ Colleagues in the [group] group:
 ==============================================================================================================
 ```
 
-#### ctop
+#### <a name="ctop"/> ctop
 
 Cluster-top or ctop for short provides an integrated real-time overview of resource availability and usage. 
 The example output below is in black and white, but you'll get a colorful picture if your terminal supports ANSI colors.
@@ -116,35 +149,72 @@ Node States: 3 IDLE | 1 IDLE+DRAIN | 7 MIXED
   L = 606877 [account]    regular-short   kallisto38                               R    1165   2500     22.3     40.0 0-00:13:33 0-05:59:00
 ```
 
-#### sjeff
+#### <a name="sjeff"/> sjeff
 
 Slurm Job EFFiciency or sjeff for short provides an overview of finished jobs, the resources they requested and how efficient these were used.
 The job efficiency is a percentage and defined as: ``` used resources / requested resources * 100```.
-Note that for CPU core usage the average is reported whereas for Memory usage the max peak usage is reported. 
+Note that for CPU core usage the average is reported whereas for Memory usage the max peak usage is reported.
 
-#### quota
+#### <a name="cnodes"/> cnodes
 
-Custom quota reporting tool for users. Lists quota for all groups a user is a member of. Example output:
+Wrapper for Slurm's sinfo command with custom output format to list all compute nodes and their state.
+Example output:
 ```
-====================================================================================================================================================
-                             |                     Total size of files and folders |                   Total number of files and folders |
-(T) Path/Filesystem          |       used       quota       limit            grace |       used       quota       limit            grace |    Status
-----------------------------------------------------------------------------------------------------------------------------------------------------
-(P) /home/[account]          |    748.5 M       1.0 G       2.0 G             none |     27.0 k       0.0         0.0               none |        Ok
-----------------------------------------------------------------------------------------------------------------------------------------------------
-(G) /apps                    |    738.3 G       1.0 T       2.0 T             none |  1,137.0 k       0.0         0.0               none |        Ok
-(G) /.envsync/tmp04          |    691.8 G       5.0 T       8.0 T             none |    584.0 k       0.0         0.0               none |        Ok
-----------------------------------------------------------------------------------------------------------------------------------------------------
-(G) /groups/[group]/prm02    |     11.8 T      12.0 T      15.0 T             none |     26.0 k       0.0         0.0               none |        Ok
-(G) /groups/[group]/tmp04    |     52.4 T      50.0 T      55.0 T      5d12h17m16s |  4,101.0 k       0.0         0.0               none | EXCEEDED!
-(F) /groups/[group]/tmp02    |     25.0 T      40.0 T      40.0 T             none |    169.0 k       0.0         0.0               none |        Ok
-====================================================================================================================================================
+PARTITION    AVAIL  NODES  STATE  S:C:T   CPUS  MAX_CPUS_PER_NODE  MEMORY  TMP_DISK  FEATURES                      GROUPS  TIMELIMIT   JOB_SIZE  ALLOCNODES  NODELIST            REASON
+duo-pro*     up     8      mixed  8:6:1   48    46                 258299  1063742   umcg,ll,tmp02,tmp04           all     7-00:01:00  1         all         umcg-node[011-018]  none
+duo-dev      up     1      mixed  8:6:1   48    46                 258299  1063742   umcg,ll,tmp02,tmp04           all     7-00:01:00  1         all         umcg-node019        none
+duo-dev      up     1      idle   8:6:1   48    46                 258299  1063742   umcg,ll,tmp02,tmp04           all     7-00:01:00  1         all         umcg-node020        none
+duo-ds-umcg  up     1      idle   2:12:1  24    12                 387557  1063742   umcg,tmp02,tmp04,prm02,prm03  all     7-00:01:00  1         all         calculon            none
+duo-ds-ll    up     1      idle   2:1:1   2     2                  7872    0         ll,tmp04,prm02,prm03          all     7-00:01:00  1         all         lifelines           none
 ```
-#### hpc-environment-quota-report-for-PFS.bash
 
-Custom quota reporting tool for admins. Lists quota for all groups on a Physical File System (PFS). Output is similar to that from the quota tool listed above.
+#### <a name="cqos"/> cqos
 
-#### hpc-environment-slurm-report.bash
+Wrapper for Slurm's sacctmgr command with custom output format to list all Quality of Service (QoS) levels and their limits.
+Example output:
+```
+           Name   Priority UsageFactor                        GrpTRES GrpSubmit GrpJobs                      MaxTRESPU MaxSubmitPU MaxJobsPU       MaxTRES     MaxWall 
+--------------- ---------- ----------- ------------------------------ --------- ------- ------------------------------ ----------- --------- ------------- ----------- 
+         normal          0    1.000000                                                                                                                                 
+        regular         10    1.000000                    cpu=0,mem=0     30000                                               5000                                     
+       leftover          0    0.000000                    cpu=0,mem=0     30000                                              10000                                     
+       priority         20    2.000000                    cpu=0,mem=0      5000                                               1000                                     
+ leftover-short          0    0.000000                                    30000                                              10000                            06:00:00 
+leftover-medium          0    0.000000                                    30000                                              10000                          1-00:00:00 
+  leftover-long          0    0.000000                                     3000                                               1000                          7-00:00:00 
+  regular-short         10    1.000000                                    30000                                               5000                            06:00:00 
+ regular-medium         10    1.000000                                    30000                     cpu=192,mem=942080        5000                          1-00:00:00 
+   regular-long         10    1.000000              cpu=96,mem=471040      3000                      cpu=48,mem=235520        1000                          7-00:00:00 
+ priority-short         20    2.000000              cpu=96,mem=471040      5000                                               1000                            06:00:00 
+priority-medium         20    2.000000              cpu=96,mem=471040      2500                      cpu=48,mem=235520         500                          1-00:00:00 
+  priority-long         20    2.000000              cpu=96,mem=471040       250                      cpu=48,mem=235520          50                          7-00:00:00 
+            dev         10    1.000000                    cpu=0,mem=0      5000                                               1000                                     
+      dev-short         10    1.000000                                     5000                      cpu=48,mem=235520        1000                            06:00:00 
+     dev-medium         10    1.000000              cpu=96,mem=471040      2500                      cpu=48,mem=235520         500                          1-00:00:00 
+       dev-long         10    1.000000              cpu=48,mem=235520       250                      cpu=48,mem=235520          50                          7-00:00:00 
+             ds         10    1.000000                    cpu=0,mem=0      5000                                               1000                                     
+       ds-short         10    1.000000                                     5000                         cpu=4,mem=4096        1000                            06:00:00 
+      ds-medium         10    1.000000                 cpu=4,mem=4096      2500                         cpu=2,mem=2048         500                          1-00:00:00 
+        ds-long         10    1.000000                 cpu=4,mem=4096       250                         cpu=1,mem=1024          50                          7-00:00:00 
+```
+
+#### <a name="cqueue"/> cqueue
+
+Wrapper for Slurm's squeue command with custom output format to list running and scheduled jobs.
+Example output:
+```
+JOBID    PARTITION  QOS             NAME                             USER           ST  TIME   NODELIST(REASON)  START_TIME           PRIORITY
+4864542  duo-pro    regular-medium  run_GS1_FinalReport_small_chr3   [user]         PD  0:00   (Priority)        2018-06-30T02:16:05  0.00011811894367
+4864541  duo-pro    regular-medium  run_GS1_FinalReport_small_chr2   [user]         PD  0:00   (Priority)        2018-06-30T01:47:42  0.00011811894367
+4864540  duo-pro    regular-medium  run_GS1_FinalReport_small_chr22  [user]         PD  0:00   (Priority)        2018-06-30T01:34:43  0.00011811894367
+4864539  duo-pro    regular-medium  run_GS1_FinalReport_small_chr21  [user]         PD  0:00   (Resources)       2018-06-29T21:55:46  0.00011811894367
+4864537  duo-pro    regular-medium  run_GS1_FinalReport_small_chr1   [user]         R   10:09  umcg-node015      2018-06-29T16:03:44  0.00011821347292
+4864526  duo-pro    regular-medium  run_GS1_FinalReport_small_chr0   [user]         R   10:13  umcg-node013      2018-06-29T16:03:40  0.00011821347292
+4864527  duo-pro    regular-medium  run_GS1_FinalReport_small_chr10  [user]         R   10:13  umcg-node011      2018-06-29T16:03:40  0.00011821347292
+4864528  duo-pro    regular-medium  run_GS1_FinalReport_small_chr11  [user]         R   10:13  umcg-node017      2018-06-29T16:03:40  0.00011821347292
+```
+
+#### <a name="hpc-environment-slurm-report.bash"/> hpc-environment-slurm-report.bash
 
 Custom SLURM cluster reporting tool. Lists available resources and resource usage over a specified period of time. Example output:
 
@@ -170,6 +240,28 @@ calculon    users    [account]     3.53%     1.06%
 TOTAL         ANY          ALL    60.60%    47.40%
 ======================================================================
 ```
+
+#### <a name="quota"/> quota
+
+Custom quota reporting tool for users. Lists quota for all groups a user is a member of. Example output:
+```
+====================================================================================================================================================
+                             |                     Total size of files and folders |                   Total number of files and folders |
+(T) Path/Filesystem          |       used       quota       limit            grace |       used       quota       limit            grace |    Status
+----------------------------------------------------------------------------------------------------------------------------------------------------
+(P) /home/[account]          |    748.5 M       1.0 G       2.0 G             none |     27.0 k       0.0         0.0               none |        Ok
+----------------------------------------------------------------------------------------------------------------------------------------------------
+(G) /apps                    |    738.3 G       1.0 T       2.0 T             none |  1,137.0 k       0.0         0.0               none |        Ok
+(G) /.envsync/tmp04          |    691.8 G       5.0 T       8.0 T             none |    584.0 k       0.0         0.0               none |        Ok
+----------------------------------------------------------------------------------------------------------------------------------------------------
+(G) /groups/[group]/prm02    |     11.8 T      12.0 T      15.0 T             none |     26.0 k       0.0         0.0               none |        Ok
+(G) /groups/[group]/tmp04    |     52.4 T      50.0 T      55.0 T      5d12h17m16s |  4,101.0 k       0.0         0.0               none | EXCEEDED!
+(F) /groups/[group]/tmp02    |     25.0 T      40.0 T      40.0 T             none |    169.0 k       0.0         0.0               none |        Ok
+====================================================================================================================================================
+```
+#### <a name="hpc-environment-quota-report-for-PFS.bash"/> hpc-environment-quota-report-for-PFS.bash
+
+Custom quota reporting tool for admins. Lists quota for all groups on a Physical File System (PFS). Output is similar to that from the quota tool listed above.
 
 ## 2. How to use this repo and contribute.
 
