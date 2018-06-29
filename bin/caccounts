@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#
+##
+### Wrapper for sacctmgr with custom output format.
+##
+#
+sacctmgr show assoc tree format="Cluster,Account,User%-30,Share,DefaultQOS%-16,QOS%-160"
