@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#
+##
+### Wrapper for sacctmgr with custom output format.
+##
+#
+sacctmgr show qos format="Name%15,Priority,UsageFactor,GrpTRES%30,GrpSubmit,GrpJobs,MaxTRESPerUser%30,MaxSubmitJobsPerUser,MaxJobsPerUser,MaxTRESPerJob,MaxWallDurationPerJob"

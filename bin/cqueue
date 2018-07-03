@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#
+##
+### Wrapper for squeue with custom output format.
+##
+#
+squeue "${@}" -o "%i|%P|%q||%j|%u|%t|%M|%R|%S|%p" | column -t -s "|"

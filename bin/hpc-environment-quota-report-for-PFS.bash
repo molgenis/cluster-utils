@@ -20,6 +20,11 @@ umask 0027
 export TMPDIR='/tmp/'
 
 #
+# Make sure dots are used as decimal separator.
+#
+export LC_ALL='en_US.UTF-8'
+
+#
 ##
 ### Main.
 ##

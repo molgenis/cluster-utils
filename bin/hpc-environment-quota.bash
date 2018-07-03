@@ -25,8 +25,7 @@ export TMPDIR='/tmp/'
 #
 # Make sure dots are used as decimal separator.
 #
-LANG='en_US.UTF-8'
-LC_NUMERIC="${LANG}"
+export LC_ALL='en_US.UTF-8'
 
 #
 # Trap all exit signals: HUP(1), INT(2), QUIT(3), TERM(15), ERR
