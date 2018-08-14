@@ -54,7 +54,7 @@ OPTIONS:
    -a   List quota for all groups instead of only for the groups the user executing this script is a member of 
         (root user only).
    -p   Plain text output: Disables coloring and other formatting using shell escape codes. 
-        Usefull when redirecting the output to a log file.
+        Useful when redirecting the output to a log file.
    -n   Normalize units and always report in tebibytes (TiB | T).
 
 Details:
