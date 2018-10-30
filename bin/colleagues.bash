@@ -30,16 +30,27 @@ fi
 
 function _Usage() {
 	echo
-	echo 'Usage:'
-	echo "       ${memyselfandi} will list by default all members of all groups you are a member of."
-	echo "       ${memyselfandi} will sort group members on account name by default."
+	printf '%s\n' 'Usage:'
+	printf '%s\n' "       ${memyselfandi} will list by default all members of all groups you are a member of."
+	printf '%s\n' "       ${memyselfandi} will sort group members on account name by default."
 	echo
-	echo 'Options:'
-	echo '       -e          Sort group members by expiration date of their account as opposed to by account name.'
-	echo '       -g all      Lists members of all groups including the ones you are not a member of.'
-	echo '       -g GROUP    Lists members of the specified group GROUP.'
-	echo '       -p          Plain text output: Disables coloring and other formatting using shell escape codes.'
-	echo '                   Useful when redirecting the output to a log file.'
+	printf '%s\n' 'Options:'
+	printf '%s\n' '       -e          Sort group members by expiration date of their account as opposed to by account name.'
+	printf '%s\n' '       -g all      Lists members of all groups including the ones you are not a member of.'
+	printf '%s\n' '       -g GROUP    Lists members of the specified group GROUP.'
+	printf '%s\n' '       -p          Plain text output: Disables coloring and other formatting using shell escape codes.'
+	printf '%s\n' '                   Useful when redirecting the output to a log file.'
+	echo
+	printf '%s\n' 'Output format contains 3 columns:'
+	printf '%s\n' '       1. Account name.'
+	printf '%s\n' '       2. Account expiration date in format YYYY-MM-DD or "Never".'
+	printf '%s\n' "       3. User's real name and email address in format: GivenName FamilyName <email-address>"
+	printf '%s\n' '          This field may be suffixed with "(Inactive)" if a user has no available authentication methods'
+	printf '%s\n' "          on the machine where the '${memyselfandi}' command is executed."
+	printf '%s\n' "          This will happen when no authentication methods (e.g. password, public key, etc.)"
+	printf '%s\n' "          are configured for a user's account or if the account has expired."
+	echo
+	printf '%s\n' 'NOTE: Group memberships are fetched live from LDAP. All other data is fetched from an LDAP cache.'
 	echo
 }
 
