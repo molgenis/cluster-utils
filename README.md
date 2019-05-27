@@ -154,6 +154,37 @@ Node States: 3 IDLE | 1 IDLE+DRAIN | 7 MIXED
 Slurm Job EFFiciency or sjeff for short provides an overview of finished jobs, the resources they requested and how efficient these were used.
 The job efficiency is a percentage and defined as: ``` used resources / requested resources * 100```.
 Note that for CPU core usage the average is reported whereas for Memory usage the max peak usage is reported.
+The example output below is in black and white, but you'll get a colorful picture if your terminal supports ANSI colors:
+
+ * green: Ok.
+ * yellow: you requested too much and wasted resources.
+ * red: you requested too little and your jobs ran inefficiently or got killed or were close to getting killed.
+
+```
+================================================================================================================
+JobName                                       | Time                 | Cores (used=average) | Memory (used=peak)
+                                              |   Requested  Used(%) |   Requested  Used(%) | Requested  Used(%)
+----------------------------------------------------------------------------------------------------------------
+validateConvading_s01_PrepareFastQ_0          |    07:00:00     0.05 |           4     0.00 |       8Gn     0.01
+validateConvading_s01_PrepareFastQ_1          |    07:00:00     0.06 |           4     0.00 |       8Gn     0.01
+validateConvading_s03_FastQC_0                |    05:59:00     0.39 |           1    60.00 |       2Gn    11.81
+validateConvading_s03_FastQC_1                |    05:59:00     0.40 |           1    66.28 |       2Gn    11.31
+validateConvading_s04_BwaAlignAndSortSam_0    |    23:59:00     0.31 |           8    39.18 |      30Gn    29.96
+validateConvading_s04_BwaAlignAndSortSam_1    |    23:59:00     0.35 |           8    45.72 |      30Gn    30.17
+validateConvading_s05_MergeBam_0              |    05:59:00     0.03 |          10     0.00 |      10Gn     0.00
+validateConvading_s05_MergeBam_1              |    05:59:00     0.05 |          10     0.00 |      10Gn     0.00
+validateConvading_s06_BaseRecalibrator_0      |    23:59:00     0.65 |           8   179.61 |      10Gn    49.54
+validateConvading_s06_BaseRecalibrator_1      |    23:59:00     0.62 |           8   222.78 |      10Gn    53.23
+validateConvading_s07_MarkDuplicates_0        |    16:00:00     0.13 |           5   193.42 |      30Gn     2.81
+validateConvading_s07_MarkDuplicates_1        |    16:00:00     0.15 |           5   167.04 |      30Gn     2.72
+validateConvading_s08_Flagstat_0              |    03:00:00     0.07 |           5     0.00 |      30Gn     0.00
+validateConvading_s08_Flagstat_1              |    03:00:00     0.06 |           5     0.00 |      30Gn     0.00
+validateConvading_s09a_Manta_0                |    16:00:00     0.01 |          21     0.00 |      30Gn     0.00
+validateConvading_s09a_Manta_1                |    16:00:00     0.01 |          21     0.00 |      30Gn     0.00
+validateConvading_s09b_Convading_0            |    05:59:00     1.29 |           1     1.79 |       4Gn     0.67
+validateConvading_s09b_Convading_1            |    05:59:00     1.50 |           1     0.31 |       4Gn     0.70
+================================================================================================================
+```
 
 #### <a name="cnodes"/> cnodes
 
