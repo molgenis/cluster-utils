@@ -183,7 +183,7 @@ function _getJobEfficiency() {
 				_walltime_e=$(printf "%.2f" "$(echo "scale=5; ((${_walltime_seconds_u} / ${_walltime_seconds_r}) * 100)" | bc)")
 				if [[ "${_walltime_seconds_u}" -gt 0 ]]
 				then
-					_cpu_e=$(printf "%.2f" "$(echo "scale=5; ((${_cpu_seconds_u} / ${_walltime_seconds_u}) * 100)" | bc)")
+					_cpu_e=$(printf "%.2f" "$(echo "scale=5; (((${_cpu_seconds_u} / ${_cpu_r}) / ${_walltime_seconds_u}) * 100)" | bc)")
 				else
 					_cpu_e='0.00'
 				fi
