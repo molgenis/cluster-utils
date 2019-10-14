@@ -32,7 +32,7 @@ function _Usage() {
     echo "       ${memyselfandi} -u some-user    Lists efficiency for all jobs of the specified user."
     echo "       ${memyselfandi} -j jobID        List efficiency for the specified job."
     echo "       ${memyselfandi} -j jobID-jobID  Lists efficiency for all jobs in the specified range of jobIDs."
-    echo "       ${memyselfandi} -j jobID,jobID  Lists efficiency for all jobs in the specified comma seprated list of jobIDs."
+    echo "       ${memyselfandi} -j jobID,jobID  Lists efficiency for all jobs in the specified comma separated list of jobIDs."
     echo "       ${memyselfandi} -j ALL          Lists efficiency for all running jobs."
     echo
 }
