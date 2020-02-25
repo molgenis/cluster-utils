@@ -701,7 +701,7 @@ sub _GetInfo {
 		${$jobs}{$job}{'node'}       = $node;
 		${$jobs}{$job}{'ncount'}     = $job_info[5]; # node count.
 		${$jobs}{$job}{'cores_r'}    = $cores;
-		${$jobs}{$job}{'mem_r'}      = _FormatMemInGB($job_info[7]);
+		${$jobs}{$job}{'mem_r'}      = _FormatMemInGB($job_info[7], __LINE__);
 		${$jobs}{$job}{'walltime_r'} = _FormatTime($job_info[8]);
 		${$jobs}{$job}{'walltime_u'} = _FormatTime($job_info[9]);
 		${$jobs}{$job}{'jname'}      = $job_info[10];
@@ -751,7 +751,7 @@ sub _GetInfo {
 			
 			if(scalar(@job_stats) == 6) {
 				${$jobs}{$job}{'cputime_u'} = _FormatTime($job_stats[1]);
-				${$jobs}{$job}{'mem_u'}     = _FormatMemInGB($job_stats[3]);
+				${$jobs}{$job}{'mem_u'}     = _FormatMemInGB($job_stats[3], __LINE__);
 			} else {
 				if ($job_stat_record =~ m/there was an error with the request to ([^\s]+) rc . Invalid user id/) {
 					my $unpatched_node = $1;
@@ -778,11 +778,16 @@ sub _GetInfo {
 		
 		chomp($node_info_record);
 		#
-		# Create pipe seperated fields as opposed to space seperated ones as the fields may contain spaces too.
+		# Create pipe separated fields as opposed to space separated ones as the fields may contain spaces too.
+		# And assign n/a is a value is missing to prevent the hash mapping below to fail with
+		# "Odd number of elements in hash assignment" error.
+		#
+		$node_info_record =~ s/\s+([^\s]+=)/\|$1/g;
+		$node_info_record =~ s/=\|/=N\/A\|/g;
+		#
 		# Then split fields based on the pipes and create hash entries for the key=value pairs of the fields.
 		#
-		$node_info_record =~ s/\s([^\s]+=)/\|$1/g;
-		my %node_info = map {split('=', $_)} (split(/\|/, $node_info_record));
+		my %node_info = map {split('=', $_, 2)} (split(/\|/, $node_info_record));
 		my $node = $node_info{'NodeName'};
 		
 		#
@@ -841,8 +846,8 @@ sub _GetInfo {
 		my $tres  = $job_info[1];
 		
 		if ($tres =~ m/mem=([^,]+)/) {
-			my $mem_r = $1 . 'M'; # For some reason mem always reported in MB when squeue formatting requested this way.
-			${$jobs}{$job}{'mem_r'} = _FormatMemInGB($mem_r);
+			my $mem_r = $1;
+			${$jobs}{$job}{'mem_r'} = _FormatMemInGB($mem_r, __LINE__);
 		} else {
 			${$jobs}{$job}{'mem_r'} = '?';
 			_PrintWarning('ERROR: Parsing ' . $squeue . ' data failed for job ' . $job . ' ('. $job_info_record . ').');
@@ -853,7 +858,7 @@ sub _GetInfo {
 
 sub _FormatMemInGB {
 	
-	my ($mem) = @_;
+	my ($mem, $caller) = @_;
 	my $reformatted_mem_value;
 	my $mem_value;
 	
@@ -869,7 +874,7 @@ sub _FormatMemInGB {
 		} elsif ($mem_unit eq 'G') {
 			$mem_value = $mem_value;
 		} else {
-			die "FATAL: Unsupported unit $mem_unit in memory value: $mem.";
+			die "FATAL: Unsupported unit $mem_unit in memory value $mem called by line $caller.";
 		}
 	} elsif ($mem =~ m/^([0-9.,]+)$/) {
 		$mem_value = $1 / 1073741824;
