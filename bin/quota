@@ -551,14 +551,9 @@ function printQuota() {
 function reformatQuota() {
   local _quota_value="${1}"
   local _regex='^([0-9.,][0-9.,]*)([kMGTP]?)'
-  local _base='1024'
-  local _exp
-  local _divide='1'
   declare -A _unit2factors=(['k']='1' ['M']='2' ['G']='3' ['T']='4' ['P']='5')
   declare -A _factors2unit=(['1']='k' ['2']='M' ['3']='G' ['4']='T' ['5']='P')
   local _factor
-  #declare -A _factors=([0]=' ' [1]='k' [2]='M' [3]='G' [4]='T' [5]='P')
-  
   if [[ "${_quota_value}" =~ ${_regex} ]]; then
     local _number="${BASH_REMATCH[1]}"
     local _unit="${BASH_REMATCH[2]}"
@@ -569,7 +564,7 @@ function reformatQuota() {
       _factor="${_unit2factors["${_unit}"]}"
     fi
     while [[ "${#_number}" -gt 5 ]]; do
-      _number="$((${_number}/1024))"
+      _number="$(echo "${_number}/1024" | bc -l)"
       _factor="$((${_factor}+1))"
     done
     printf -v _formatted_number "%'.1f" "${_number}"
