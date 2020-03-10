@@ -558,14 +558,16 @@ function reformatQuota() {
     local _number="${BASH_REMATCH[1]}"
     local _unit="${BASH_REMATCH[2]}"
     _number="${_number//,/}" # Remove all ',' thousand separators, which bc does not like.
+    local _int="${_number%%.*}"
     if [[ -z "${_unit:-}" ]]; then
       _factor='0'
     else
       _factor="${_unit2factors["${_unit}"]}"
     fi
-    while [[ "${#_number}" -gt 5 ]]; do
+    while [[ "${#_int}" -gt 5 ]]; do
       _number="$(echo "${_number}/1024" | bc -l)"
       _factor="$((${_factor}+1))"
+      _int="${_number%%.*}"
     done
     printf -v _formatted_number "%'.1f" "${_number}"
     if [[ "${_factor}" -eq 0 ]]; then
