@@ -523,31 +523,6 @@ function printQuota() {
 #  * Convert large numbers without unit into kilo unit.
 #  * Standardise on a space between value and unit.
 #
-#function reformatQuota() {
-#  local _quota_value="${1}"
-#  local _regex='^([0-9.,][0-9.,]*)([kMGTP]?)'
-#  if [[ "${_quota_value}" =~ ${_regex} ]]; then
-#    local _int="${BASH_REMATCH[1]}"
-#    local _unit="${BASH_REMATCH[2]}"
-#    if [[ -z "${_unit:-}" && "${_int}" -gt 5 ]]; then
-#      _int=$((${_int}/1024))
-#      _unit='k'
-#    fi
-#    printf -v _formatted_number "%'.1f" "${_int}"
-#    if [[ -z "${_unit:-}" ]]; then
-#      _quota_value="${_formatted_number}  "
-#    else
-#      _quota_value="${_formatted_number} ${_unit}"
-#    fi
-#  fi
-#  printf '%s' "${_quota_value}"
-#}
-
-#
-# Reformat quota values and units: keeping resolution using different units.
-#  * Convert large numbers without unit into kilo unit.
-#  * Standardise on a space between value and unit.
-#
 function reformatQuota() {
   local _quota_value="${1}"
   local _regex='^([0-9.,][0-9.,]*)([kMGTP]?)'
