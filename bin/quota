@@ -197,34 +197,12 @@ function getFileSetQuotaForGPFS() {
 }
 
 #
-# LustreFS has dedicated quota tools with output that deviates from the normal quota reporting.
-# This function parses the lfs quota output with some site specific hacks 
-# and formats the result using printf with a format as specified by the ${format} variable.
+# Lustre and BeeGFS file systems have their own quota tools.
+# This function can parse group quota for these file systems and report them in a uniform format.
 #
-function getGroupQuotaForLustreFS() {
-  #
-  # lfs quota examples.
-  #
-  # $~> lfs quota -h -g umcg-gaf /groups/umcg-gaf/tmp04
-  # Disk quotas for group umcg-gaf (gid 55100132):
-  #      Filesystem    used   quota   limit   grace   files   quota   limit   grace
-  # /groups/umcg-gaf/tmp04
-  #                  23.09T*    15T     20T       -  334110       0       0       -
-  #
-  # $~> lfs quota -h -g umcg-pneerincx /home
-  # Disk quotas for group umcg-pneerincx (gid 50100292):
-  #      Filesystem    used   quota   limit   grace   files   quota   limit   grace
-  #           /home  356.4M      1G      2G       -    7159       0       0       -
-  #
-  local _group="$1"
-  local _size_used=1
-  local _size_quota=2
-  local _size_limit=3
-  local _size_grace=4
-  local _files_used=5
-  local _files_quota=6
-  local _files_limit=7
-  local _files_grace=8
+function getGroupQuota() {
+  local _group="${1}"
+  local _fs_type="${2}"
   #
   # Define quota type.
   #  Private groups have: 50.100.000 <= GID <= 55.100.000
@@ -239,7 +217,7 @@ function getGroupQuotaForLustreFS() {
   #
   # Loop over Logical File Systems (LFS-ses).
   #
-  for _FS in $(awk '$3 == "lustre" {print $2}' /proc/mounts | sort)
+  for _FS in $(awk -v _fs_type="${_fs_type}" '$3 == _fs_type {print $2}' /proc/mounts | sort)
   do
     #
     # Initialize var to display subgroup quota in report.
@@ -252,7 +230,6 @@ function getGroupQuotaForLustreFS() {
       #
       # We are dealing with a complete FS.
       #
-      local _fs_type='complete'
       if [ "${_group}" == ${DEPLOY_ADMIN_GROUP} ]; then
         #
         # Deploy Admins (depad) group only uses specific LFS-ses.
@@ -304,11 +281,10 @@ function getGroupQuotaForLustreFS() {
           continue
         fi
       fi
-    else 
+    else
       #
-      # We are dealing with bind mounts of sub folders of a complete FS.
+      # We are dealing with (bind) mounts of sub folders of a complete FS.
       #
-      local _fs_type='partial'
       if [ "${_group}" == ${DEPLOY_ADMIN_GROUP} ]; then
         #
         # Deploy Admins (depad) group only uses specific LFS-ses.
@@ -355,20 +331,91 @@ function getGroupQuotaForLustreFS() {
         fi
       fi
     fi
-    local _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | tr -d '\n')"  || reportError ${LINENO} $?
-    IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}" | tail -n 1)                || reportError ${LINENO} $?
-    if [[ ! -z ${_body_values[0]:-} && ${#_body_values[@]:-} -eq 9 ]]; then
-      if [ "${_FS_for_report}" == 'NA' ]; then
-        _FS_for_report="${_FS}"
+    if [[ "${_fs_type}" == 'beegfs' ]]; then
+      #
+      # BeeGFS has dedicated quota tools with output that deviates from the normal quota reporting.
+      # This function parses the beegfs-ctl --getquota output with some site specific hacks 
+      # and formats the result using printf with a format as specified by the ${format} variable.
+      #
+      # WARNING: Currently limited to one BeeGFS per server!
+      #          When a server has multiple beegfs mounts, we cannot distingish between the mounts 
+      #          as the beegfs-ctl tool does not report which mount the values apply too :o.
+      #
+      # BeeGFS quota examples.
+      #
+      # $~> beegfs-ctl --getquota --gid umcg-depad
+      #       user/group     ||           size          ||    chunk files    
+      #      name     |  id  ||    used    |    hard    ||  used   |  hard   
+      # --------------|------||------------|------------||---------|---------
+      #     umcg-depad|55100128||    8.27 GiB|   unlimited||     1286|unlimited
+      #
+      # $~> beegfs-ctl --getquota --csv --gid umcg-depad
+      # name,id,size,hard,files,hard
+      # umcg-depad,55100128,165144313856,unlimited,1346,unlimited
+      #
+      local _size_used=2
+      local _size_limit=3
+      local _files_used=4
+      local _files_limit=5
+      local _fs_quota="$(beegfs-ctl --getquota --csv --gid ${_group} 2> /dev/null )"  || reportError ${LINENO} $?
+      IFS=',' read -a _body_values  <<< $(echo "${_fs_quota}" | tail -n 1)            || reportError ${LINENO} $?
+      if [[ ! -z ${_body_values[0]:-} && ${#_body_values[@]:-} -eq 6 ]]; then
+        if [[ "${_FS_for_report}" == 'NA' ]]; then
+          _FS_for_report="${_FS}"
+        fi
+        declare -a _quota_values=("${_FS_for_report}" 
+                   "${_body_values[${_size_used}]}"  'NA' "${_body_values[${_size_limit}]}"  'none' 
+                   "${_body_values[${_files_used}]}" 'NA' "${_body_values[${_files_limit}]}" 'none')
+        printQuota "${_quota_type}" "${_quota_values[@]}"
+      else
+        echo "ERROR: Cannot parse quota values returned by beegfs-ctl --getquota --csv --gid ${_group}"
       fi
-      declare -a _quota_values=("${_FS_for_report}" 
-                 "${_body_values[${_size_used}]}"  "${_body_values[${_size_quota}]}"  "${_body_values[${_size_limit}]}"  "${_body_values[${_size_grace}]}" 
-                 "${_body_values[${_files_used}]}" "${_body_values[${_files_quota}]}" "${_body_values[${_files_limit}]}" "${_body_values[${_files_grace}]}")
-      printQuota "${_quota_type}" "${_quota_values[@]}"
+    elif [[ "${_fs_type}" == 'lustre' ]]; then
+      #
+      # LustreFS has dedicated quota tools with output that deviates from the normal quota reporting.
+      # This function parses the lfs quota output with some site specific hacks 
+      # and formats the result using printf with a format as specified by the ${format} variable.
+      #
+      # lfs quota examples.
+      #
+      # $~> lfs quota -h -g umcg-gaf /groups/umcg-gaf/tmp04
+      # Disk quotas for group umcg-gaf (gid 55100132):
+      #      Filesystem    used   quota   limit   grace   files   quota   limit   grace
+      # /groups/umcg-gaf/tmp04
+      #                  23.09T*    15T     20T       -  334110       0       0       -
+      #
+      # $~> lfs quota -h -g umcg-pneerincx /home
+      # Disk quotas for group umcg-pneerincx (gid 50100292):
+      #      Filesystem    used   quota   limit   grace   files   quota   limit   grace
+      #           /home  356.4M      1G      2G       -    7159       0       0       -
+      #
+      local _size_used=1
+      local _size_quota=2
+      local _size_limit=3
+      local _size_grace=4
+      local _files_used=5
+      local _files_quota=6
+      local _files_limit=7
+      local _files_grace=8
+      local _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | tr -d '\n')"  || reportError ${LINENO} $?
+      IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}" | tail -n 1)                || reportError ${LINENO} $?
+      if [[ ! -z ${_body_values[0]:-} && ${#_body_values[@]:-} -eq 9 ]]; then
+        if [[ "${_FS_for_report}" == 'NA' ]]; then
+          _FS_for_report="${_FS}"
+        fi
+        declare -a _quota_values=("${_FS_for_report}" 
+                   "${_body_values[${_size_used}]}"  "${_body_values[${_size_quota}]}"  "${_body_values[${_size_limit}]}"  "${_body_values[${_size_grace}]}" 
+                   "${_body_values[${_files_used}]}" "${_body_values[${_files_quota}]}" "${_body_values[${_files_limit}]}" "${_body_values[${_files_grace}]}")
+        printQuota "${_quota_type}" "${_quota_values[@]}"
+      else
+        echo "ERROR: Cannot parse quota values returned by beegfs-ctl --getquota --csv --gid ${_group}"
+      fi
+    else
+      echo "ERROR: unsupported file system type: ${_fs_type}."
+      return
     fi
   done
 }
-
 
 #
 # This function parses a single line of plain vanilla Linux quota tools output
@@ -479,22 +526,35 @@ function printQuota() {
 function reformatQuota() {
   local _quota_value="${1}"
   local _regex='^([0-9.,][0-9.,]*)([kMGTP]?)'
+  declare -A _unit2factors=(['k']='1' ['M']='2' ['G']='3' ['T']='4' ['P']='5')
+  declare -A _factors2unit=(['1']='k' ['2']='M' ['3']='G' ['4']='T' ['5']='P')
+  local _factor
   if [[ "${_quota_value}" =~ ${_regex} ]]; then
-    local _int="${BASH_REMATCH[1]}"
+    local _number="${BASH_REMATCH[1]}"
     local _unit="${BASH_REMATCH[2]}"
-    if [[ -z "${_unit:-}" && "${_int}" -gt 5 ]]; then
-      _int=$((${_int}/1000))
-      _unit='k'
-    fi
-    printf -v _formatted_number "%'.1f" "${_int}"
+    _number="${_number//,/}" # Remove all ',' thousand separators, which bc does not like.
+    local _int="${_number%.*}"
     if [[ -z "${_unit:-}" ]]; then
+      _factor='0'
+    else
+      _factor="${_unit2factors["${_unit}"]}"
+    fi
+    while [[ "${#_int}" -gt 5 ]]; do
+      _number="$(echo "${_number}/1024" | bc -l)"
+      _factor="$((${_factor}+1))"
+      _int="${_number%.*}"
+    done
+    printf -v _formatted_number "%'.1f" "${_number}"
+    if [[ "${_factor}" -eq 0 ]]; then
       _quota_value="${_formatted_number}  "
     else
-      _quota_value="${_formatted_number} ${_unit}"
+      _quota_value="${_formatted_number} ${_factors2unit[${_factor}]}"
     fi
   fi
   printf '%s' "${_quota_value}"
 }
+
+
 
 #
 # Reformat quota values and units by normalizing data on the same unit T (TiB, tebibyte).
@@ -513,6 +573,7 @@ function convert2TiB () {
         _exp=$((${_exp} - ${_factors[$_unit]}))
       fi
       _divide=$((${_base} ** ${_exp}))
+      _number="${_number//,/}" # Remove all ',' thousand separators, which bc does not like.
       printf "%'.1f T" $(echo "scale=1; ${_number}/${_divide}" | bc)
   else
     #
@@ -743,7 +804,7 @@ set -e
 #
 for THIS_PRIVATE_GROUP in "${QUOTA_PRIVATE_GROUPS[@]}"
 do
-  quota_private_group_report=$(getGroupQuotaForLustreFS "${THIS_PRIVATE_GROUP}")
+  quota_private_group_report=$(getGroupQuota "${THIS_PRIVATE_GROUP}" 'lustre')
   #echo "DEBUG: THIS_PRIVATE_GROUP = ${THIS_PRIVATE_GROUP}"
   if [[ ! -z ${quota_private_group_report:-} ]]; then
     echo "${SEP_SINGLE}"
@@ -755,18 +816,22 @@ done
 # Display relevant group quota.
 # 
 # Only used
-#  * for group dirs from shared GPFS or Lustre systems 
-#  * under control of either the Lustre quota tool (lfs quota) or GPFS quota tool (mmlsquota).
+#  * for group dirs from shared GPFS, Lustre or BeeGFS file systems 
+#  * under control of either the Lustre quota tool (lfs quota) or GPFS quota tool (mmlsquota) or BeeGFS quota tool (beegfs-ctl).
 #
 for THIS_GROUP in "${QUOTA_GROUPS[@]}"
 do
-  quota_group_report=$(getGroupQuotaForLustreFS "${THIS_GROUP}")
+  quota_group_report_lustre=$(getGroupQuota "${THIS_GROUP}" 'lustre')
+  quota_group_report_beegfs=$(getGroupQuota "${THIS_GROUP}" 'beegfs')
   quota_fileset_report=$(getFileSetQuotaForGPFS "${THIS_GROUP}")
-  if [[ ! -z ${quota_group_report:-} || ! -z ${quota_fileset_report} ]]; then
+  if [[ ! -z ${quota_group_report_lustre:-} || ! -z ${quota_fileset_report:-} || ! -z ${quota_group_report_beegfs:-} ]]; then
     echo "${SEP_SINGLE}"
   fi
-  if [[ ! -z ${quota_group_report:-} ]]; then
-    echo "${quota_group_report}"
+  if [[ ! -z ${quota_group_report_lustre:-} ]]; then
+    echo "${quota_group_report_lustre}"
+  fi
+  if [[ ! -z ${quota_group_report_beegfs:-} ]]; then
+    echo "${quota_group_report_beegfs}"
   fi
   if [[ ! -z ${quota_fileset_report:-} ]]; then
     echo "${quota_fileset_report}"
