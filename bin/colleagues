@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# shellcheck disable=SC2004,SC2059
 #
 ##
 ### Environment and bash sanity.
@@ -8,14 +8,14 @@
 set -u
 set -e
 umask 0027
-memyselfandi=$(basename $0)
-if [[ "${BASH_VERSINFO}" -lt 4 || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+memyselfandi="$(basename "${0}")"
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
 	echo "Sorry, you need at least bash 4.x to use ${memyselfandi}." >&2
 	exit 1
 fi
 
 set +e
-SSH_LDAP_HELPER="$(which ssh-ldap-helper 2>/dev/null)"
+SSH_LDAP_HELPER="$(command -v 'ssh-ldap-helper' 2>/dev/null)"
 set -e
 SSH_LDAP_HELPER="${SSH_LDAP_HELPER:-/usr/libexec/openssh/ssh-ldap-helper}"
 if [ ! -x "${SSH_LDAP_HELPER:-}" ]; then
@@ -121,12 +121,11 @@ function _SortGroupMembersByDate() {
 	#
 	# Sort hashMap and store sorted users in array ${sorted_keys[@]}.
 	#
-	IFS=$'\n'; set -f
-	group_members_sorted_by_exp_date=($(
+	readarray -t group_members_sorted_by_exp_date < <(
 		for _user in "${!_hashmap[@]}"; do
 			printf '%s:%s\n' "${_user}" "${_hashmap[${_user}]}"
 		done | sort -t ':' -k 2V | sed 's/:.*//'
-	))
+	)
 	unset IFS; set +f
 }
 
@@ -169,12 +168,13 @@ function _PrintUserInfo() {
 	local _format="${2}"
 	local _login_expiration_time="${users["${_user}"]}"
 	local _gecos
-	IFS=':' read -a _user_info <<< "$(getent passwd ${_user} | cut -d ':' -s -f 1,5)"
-	if [[ ${_login_expiration_time} == '9999-99-99' || ${_login_expiration_time} == 'NA' ]]; then
+	IFS=':' read -r -a _user_info <<< "$(getent passwd "${_user}" | cut -d ':' -s -f 1,5)"
+	if [[ "${_login_expiration_time}" == '9999-99-99' || "${_login_expiration_time}" == 'NA' ]]; then
 		_login_expiration_time='Never'
 	fi
-	if [[ ${#_user_info[@]:0} -ge 1 ]]; then
-		local _public_key="$(${SSH_LDAP_HELPER} -s ${_user})"
+	if [[ "${#_user_info[@]:0}" -ge 1 ]]; then
+		local _public_key
+		_public_key="$(${SSH_LDAP_HELPER} -s "${_user}")"
 		if [[ -n "${_public_key}" ]]; then
 			_gecos="${_user_info[1]:-NA}"
 		else
@@ -240,10 +240,10 @@ while getopts "g:ehp" opt; do
 			group="${OPTARG}"
 			;;
 		\?)
-			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Invalid option -${OPTARG}. Try $(basename $0) -h for help."
+			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Invalid option -${OPTARG}. Try ${memyselfandi} -h for help."
 			;;
 		:)
-			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Option -${OPTARG} requires an argument. Try $(basename $0) -h for help."
+			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Option -${OPTARG} requires an argument. Try ${memyselfandi} -h for help."
 			;;
 		esac
 done
@@ -267,13 +267,13 @@ if [[ -z ${group:-} ]]; then
 	#
 	# Get all groups of the current user.
 	#
-	IFS=' ' read -a groups <<< "$(id -Gn | tr ' ' '\n' | sort | tr '\n' ' ')"
+	IFS=' ' read -r -a groups <<< "$(id -Gn | tr ' ' '\n' | sort | tr '\n' ' ')"
 else
 	if [[ ${group} == 'all' ]]; then
 		#
 		# List all groups with group folders on this server.
 		#
-		IFS=' ' read -a groups <<< "$(find '/groups/' -mindepth 1 -maxdepth 1 -type d | grep -o '[^/]*$' | sort | tr '\n' ' ')"
+		IFS=' ' read -r -a groups <<< "$(find '/groups/' -mindepth 1 -maxdepth 1 -type d | grep -o '[^/]*$' | sort | tr '\n' ' ')"
 	else
 		#
 		# Check if specified group exists.
@@ -300,10 +300,8 @@ LDAP_SEARCH_BASE="$(awk '$1 == "base" {print $2}' "${ldap_config_file}")"
 # List owners, data managers and members per group.
 #
 declare -A users
-this_user="$(whoami)"
-regex='([^=]+)=([^=]+)'
-for group in ${groups[@]}; do \
-	if [[ "${group}" == ${this_user} ]]; then
+for group in "${groups[@]}"; do
+	if [[ "${group}" == "$(whoami)" ]]; then
 		#
 		# Skip private group.
 		#
@@ -321,7 +319,6 @@ for group in ${groups[@]}; do \
 	declare -a dms=('MIA')
 	declare -a members=('MIA')
 	declare ldap_query_result
-	declare line
 	#
 	# Get group owners.
 	#
@@ -361,7 +358,7 @@ for group in ${groups[@]}; do \
 	#
 	# Get regular members.
 	#
-	readarray -t members <<< "$(getent group ${group} | sed 's/.*://' | tr ',' '\n' | sort)"
+	readarray -t members <<< "$(getent group "${group}" | sed 's/.*://' | tr ',' '\n' | sort)"
 	#
 	# Append all accounts to non-redundant users hash.
 	#
