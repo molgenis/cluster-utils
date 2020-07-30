@@ -28,12 +28,24 @@ fi
 # but there is no easy way to get the specifics of the LDAP schema from the ldap_config_file :(
 #
 declare ldap_config_file='/etc/ssh/ldap.conf'
+#
+# For eDirectory.
+#
 declare ldap_group_object_class='groupofnames'
 declare ldap_group_owner_attr='ruggroupOwnerValue'
 declare ldap_group_datamanager_attr='ruggroupDataManagerValue'
 declare ldap_user_object_class='person'
 declare ldap_user_expiration_attr='loginexpirationtime'
 declare ldap_user_expiration_regex='^'"${ldap_user_expiration_attr}"': ([0-9]{4})([0-9]{2})([0-9]{2}).+Z$'
+#
+# For OpenLDAP.
+#
+#declare ldap_group_object_class='posixGroup'
+#declare ldap_group_owner_attr='groupOwnerUid'
+#declare ldap_group_datamanager_attr='groupDataManager'
+#declare ldap_user_object_class='inetOrgPerson'
+#declare ldap_user_expiration_attr='loginexpirationtime'
+#declare ldap_user_expiration_regex='^'"${ldap_user_expiration_attr}"': ([0-9]{4})([0-9]{2})([0-9]{2}).+Z$'
 
 #
 ##
@@ -79,9 +91,9 @@ function _GetLoginExpirationTimes() {
 	for _user in "${!users[@]}"; do
 		if [[ "${users["${_user}"]}" == 'NA' ]]; then
 			local _login_expiration_time='9999-99-99'
-			local _ldap_query_result
+			local _query_result
 			local _line
-			_ldap_query_result=$(ldapsearch -LLL -o ldif-wrap=no \
+			_query_result=$(ldapsearch -LLL -o ldif-wrap=no \
 					-H "${LDAP_HOST}" \
 					-D "${LDAP_USER}" \
 					-w "${LDAP_PASS}" \
@@ -93,7 +105,7 @@ function _GetLoginExpirationTimes() {
 				if [[ "${_line}" =~ ${ldap_user_expiration_regex} ]]; then
 					_login_expiration_time="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
 				fi
-			done < <( printf '%s\n' "${_ldap_query_result}")
+			done < <( printf '%s\n' "${_query_result}")
 			users["${_user}"]="${_login_expiration_time}"
 			if [[ "${plain_text}" -eq 0 ]]; then
 				printf '%s' '.' # Process indicator.
@@ -318,14 +330,17 @@ for group in "${groups[@]}"; do
 	declare -a owners=('MIA')
 	declare -a dms=('MIA')
 	declare -a members=('MIA')
-	declare ldap_query_result
+	declare query_result
 	#
 	# Get group owners.
 	#
 	if [[ $(getent group "${group}-owners") ]]; then
-		readarray -t owners <<< "$(getent group "${group}-owners" | sed 's/.*://' | tr ',' '\n' | sort)"
+		query_result="$(getent group "${group}-owners" | sed 's/.*://')"
+		if [[ -n "${query_result:-}" ]]; then
+			readarray -t owners < <( printf '%s\n' "${query_result}" | tr ',' '\n' | sort )
+		fi
 	else
-		ldap_query_result=$(ldapsearch -LLL -o ldif-wrap=no \
+		query_result=$(ldapsearch -LLL -o ldif-wrap=no \
 			-H "${LDAP_HOST}" \
 			-D "${LDAP_USER}" \
 			-w "${LDAP_PASS}" \
@@ -333,17 +348,20 @@ for group in "${groups[@]}"; do
 			"(&(ObjectClass=${ldap_group_object_class})(cn:dn:=${group}))" \
 			"${ldap_group_owner_attr}"
 		)
-		if printf '%s\n' "${ldap_query_result:-}" | grep -q "${ldap_group_owner_attr}"; then
-			readarray -t owners < <( printf '%s\n' "${ldap_query_result}" | grep "${ldap_group_owner_attr}" | sed "s/${ldap_group_owner_attr}: //" | sort )
+		if printf '%s\n' "${query_result:-}" | grep -q "${ldap_group_owner_attr}"; then
+			readarray -t owners < <( printf '%s\n' "${query_result}" | grep "${ldap_group_owner_attr}" | sed "s/${ldap_group_owner_attr}: //" | sort )
 		fi
 	fi
 	#
 	# Get data managers for this group.
 	#
 	if [[ $(getent group "${group}-dms") ]]; then
-		readarray -t dms <<< "$(getent group "${group}-dms" | sed 's/.*://' | tr ',' '\n' | sort)"
+		query_result="$(getent group "${group}-dms" | sed 's/.*://')"
+		if [[ -n "${query_result:-}" ]]; then
+			readarray -t dms < <( printf '%s\n' "${query_result}" | tr ',' '\n' | sort )
+		fi
 	else
-		ldap_query_result=$(ldapsearch -LLL -o ldif-wrap=no \
+		query_result=$(ldapsearch -LLL -o ldif-wrap=no \
 			-H "${LDAP_HOST}" \
 			-D "${LDAP_USER}" \
 			-w "${LDAP_PASS}" \
@@ -351,19 +369,22 @@ for group in "${groups[@]}"; do
 			"(&(ObjectClass=${ldap_group_object_class})(cn:dn:=${group}))" \
 			"${ldap_group_datamanager_attr}"
 		)
-		if printf '%s\n' "${ldap_query_result:-}" | grep -q "${ldap_group_datamanager_attr}"; then
-			readarray -t dms < <( printf '%s\n' "${ldap_query_result}" | grep "${ldap_group_datamanager_attr}" | sed "s/${ldap_group_datamanager_attr}: //" | sort )
+		if printf '%s\n' "${query_result:-}" | grep -q "${ldap_group_datamanager_attr}"; then
+			readarray -t dms < <( printf '%s\n' "${query_result}" | grep "${ldap_group_datamanager_attr}" | sed "s/${ldap_group_datamanager_attr}: //" | sort )
 		fi
 	fi
 	#
 	# Get regular members.
 	#
-	readarray -t members <<< "$(getent group "${group}" | sed 's/.*://' | tr ',' '\n' | sort)"
+	query_result="$(getent group "${group}" | sed 's/.*://')"
+	if [[ -n "${query_result:-}" ]]; then
+		readarray -t members < <( printf '%s\n' "${query_result}" | tr ',' '\n' | sort )
+	fi
 	#
 	# Append all accounts to non-redundant users hash.
 	#
-	for user in "${owners[@]}" "${dms[@]}" "${members[@]}"; do
-		if [[ -z "${users["${user}"]:-}" ]]; then
+	for user in "${owners[@]:-}" "${dms[@]:-}" "${members[@]:-}"; do
+		if [[ -n "${user}" && -z "${users["${user}"]:-}" ]]; then
 			users["${user}"]='NA'
 		fi
 	done
