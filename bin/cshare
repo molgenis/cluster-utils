@@ -1,0 +1,11 @@
+#!/bin/bash
+
+#
+##
+### Wrapper for sshare with custom output format.
+##
+#
+cat <(echo 'SlurmAccount|SlurmUser|RawShares|NormalizedShares|RawUsage|NormalizedUsage|EffectiveUsage|FairShare|LevelFS|TRESRunMins') \
+	<(echo '============|=========|=========|==========|========|===============|==============|=========|=======|===========') \
+	<(sshare -P -a -l -n -o "Account,User%-30,RawShares,NormShares,RawUsage,NormUsage,EffectvUsage,FairShare,LevelFS,TRESRunMins%-90") \
+	| column -t -s '|'

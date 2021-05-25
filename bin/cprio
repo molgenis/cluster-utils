@@ -1,0 +1,92 @@
+#!/bin/bash
+
+#
+##
+### Wrapper for sprio with custom output format.
+##
+#
+#
+
+set -e
+set -u
+
+#
+##
+### Functions
+##
+#
+
+function showHelp() {
+	#
+	# Display commandline help on STDOUT.
+	#
+	cat <<EOH
+===============================================================================================================
+The cprio command is wrapper for Slurm's sprio command with custom output format.
+It can be used to view the components of a job's scheduling priority.
+By default, cprio returns information for all pending jobs in the queue and sorted by job ID.
+Optionally the list of jobs can be filtered on specific job IDs or user names and sorted by priority.
+
+The reported PRIORITY is a relative weight and the sum of AGE + FAIRSHARE + QOS.
+
+ * AGE:       Accrued Queue Time; the longer a job has been waiting in the queue, the higher the weight.
+ * FAIRSHARE: Recent historic resource usage impacts your Fair Share; The more resources you used recently, the lower your Fair Share weight.
+ * QOS:       Quality of Service; a higher priority QoS has more weight than a lower priority one.
+
+PRIORITY, AGE, FAIRSHARE and QOS are reported twice: as an absolute value and as a normalized one.
+
+Usage:
+	$(basename "${0}") OPTIONS
+Options:
+	-h	Show this help.
+	-s	Sort the jobs on priority as opposed to on job ID (default).
+	-u	Display jobs for a comma separated list of users.
+	-j	Display jobs for a comma separated list of job IDs.
+===============================================================================================================
+EOH
+	exit 0
+}
+
+
+#
+##
+### Main
+##
+#
+
+declare filter_arguments=''
+declare sort_field='1,1n' # Sort on job ID (default)
+
+while getopts ":u:j:sh" opt
+do
+	case "${opt}" in
+		h)
+			showHelp
+			;;
+		s)
+			sort_field='3,3nr' # Reverse sort on absolute priority
+			;;
+		u)
+			filter_arguments="${filter_arguments:-} -u ${OPTARG}"
+			;;
+		j)
+			filter_arguments="${filter_arguments:-} -j ${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option -${OPTARG}. Try $(basename "${0}") -h for help."
+			exit 1
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument. Try $(basename "${0}") -h for help."
+			exit 1
+			;;
+		*)
+			echo "Unhandled option. Try $(basename "${0}") -h for help."
+			exit 1
+			;;
+	esac
+done
+
+cat <(echo '#####|####|ABSOLUTE|NORMALIZED|ABS|NORM|ABSOLUTE|NORMALIZED|ABS|NORM|####') \
+	<(sprio ${filter_arguments:-} -o "%.i|%20u|%.Y|%.y|%.A|%.a|%.F|%.f|%.Q|%.q|%.N" | uniq | (sed -u 1q; sort -t '|' -k "${sort_field}")) \
+	| column -t -s '|'
