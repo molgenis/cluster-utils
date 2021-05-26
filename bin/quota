@@ -407,8 +407,8 @@ function getGroupQuota() {
       local _offset_files_quota=6
       local _offset_files_limit=7
       local _offset_files_grace=8
-      local _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | tr -d '\n')"  || reportError "${LINENO}" "${?}"
-      IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}" | tail -n 1)                || reportError "${LINENO}" "${?}"
+      local _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+      IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}") || reportError "${LINENO}" "${?}"
       if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 9 ]]; then
         declare -a _quota_values=("${_FS_for_report}" 
                    "${_body_values[${_offset_size_used}]}"  "${_body_values[${_offset_size_quota}]}"  "${_body_values[${_offset_size_limit}]}"  "${_body_values[${_offset_size_grace}]}" 
@@ -429,14 +429,7 @@ function getGroupQuota() {
       #  3. soft limit: we expect this to be configured according the following rules relative to the hard limit.
       #      * soft limit is in the same unit as the hard limit: e.g. if the hard limit is in GB the soft limit is too.
       #      * soft limit is at least 1 and hard limit is at least 2.
-      #      * hard limit is 10% extra compared to the soft limit rounded to the nearest next integer.
-      #      * soft  1 = hard  1,1 -> 2
-      #        soft  2 = hard  2,2 -> 3
-      #        soft  3 = hard  3,3 -> 4
-      #        ....  x = hard  ... -> y
-      #        soft  9 = hard  9,9 -> 10
-      #        soft 10 = hard 11,0 -> 12
-      #        soft 11 = hard 12,1 -> 13
+      #      * hard limit is ~10% extra compared to the soft limit rounded to the nearest next integer.
       #
       # Isilon OneFS NFS share "df" output example for directory quota.
       #
@@ -458,18 +451,25 @@ function getGroupQuota() {
       local _offset_size_limit='2'
       local _offset_files_used='3'
       local _offset_files_limit='2'
-      local _directory_bsize_quota="$(df -T -k "${_FS_for_report}" 2> /dev/null)"                  || reportError "${LINENO}" "${?}"
-      local _directory_inode_quota="$(df -T -i "${_FS_for_report}" 2> /dev/null)"                  || reportError "${LINENO}" "${?}"
+      local _directory_bsize_quota="$(df -T -k "${_FS_for_report}" 2> /dev/null)" || reportError "${LINENO}" "${?}"
+      local _directory_inode_quota="$(df -T -i "${_FS_for_report}" 2> /dev/null)" || reportError "${LINENO}" "${?}"
       IFS=' ' read -a _bsize_values <<< $(echo "${_directory_bsize_quota}" | tail -n 1) || reportError "${LINENO}" "${?}"
       IFS=' ' read -a _inode_values <<< $(echo "${_directory_inode_quota}" | tail -n 1) || reportError "${LINENO}" "${?}"
       if [[ -n "${_bsize_values[0]:-}" && "${#_bsize_values[@]:-}" -eq 7 && -n "${_inode_values[0]:-}" && "${#_inode_values[@]:-}" -eq 7 ]]; then
         #
-        # Define values not reported explicitly or not reported at all by df.
+        # Define default values not reported by df.
         #
         local _size_quota='?'
         local _size_grace='?'
         local _files_quota='?'
         local _files_grace='?'
+        #
+        # Check if missing values can be supplemented from a .quota cache file.
+        #
+        if [[ -r "${_FS_for_report}/.quota" ]]; then
+          _size_quota='?'
+          _files_quota='?'
+        fi
         #
         # Declare quota values array and display values.
         #
