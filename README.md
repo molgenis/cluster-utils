@@ -15,6 +15,8 @@ Tools to get reports on authentication & authorization settings and identities.
 - [cnodes](#-cnodes): Lists state of compute nodes.
 - [cqos](#-cqos): Lists details for all Quality of Service levels.
 - [cqueue](#-cqueue): Lists running and queued jobs.
+- [cprio](#-cprio): Lists priority of all jobs in the queue.
+- [cshare](#-cshare): Lists the shares Slurm users in Slurm accounts have, their recent resource usage and how this impacts their _fair share_.
 - [hpc-environment-slurm-report](#-hpc-environment-slurm-report): Creates reports on cluster usage as percentage of available resources for specified period (e.g. week, month, etc.).
 
 ### Tools for monitoring file system and quota status
@@ -243,6 +245,44 @@ JOBID    PARTITION  QOS             NAME                             USER       
 4864526  duo-pro    regular-medium  run_GS1_FinalReport_small_chr0   [user]         R   10:13  umcg-node013      2018-06-29T16:03:40  0.00011821347292
 4864527  duo-pro    regular-medium  run_GS1_FinalReport_small_chr10  [user]         R   10:13  umcg-node011      2018-06-29T16:03:40  0.00011821347292
 4864528  duo-pro    regular-medium  run_GS1_FinalReport_small_chr11  [user]         R   10:13  umcg-node017      2018-06-29T16:03:40  0.00011821347292
+```
+
+#### <a name="cprio"/> cprio
+
+Wrapper for Slurm's sprio command with custom output format to list components that make up the priority of scheduled jobs.
+Example output:
+
+```
+#####   ####     ABSOLUTE  NORMALIZED        ABS   NORM       ABSOLUTE   NORMALIZED  ABS     NORM       ####
+JOBID   USER     PRIORITY  PRIORITY          AGE   AGE        FAIRSHARE  FAIRSHARE   QOS     QOS        NICE
+417928  userA    543307    0.00012649867973  1000  1.0000000  42308      0.4230769   500000  0.5000000  0
+421373  userB    503197    0.00011715986820  1000  1.0000000  2198       0.0219780   500000  0.5000000  0
+421374  userB    503197    0.00011715986820  1000  1.0000000  2198       0.0219780   500000  0.5000000  0
+421375  userB    503197    0.00011715986820  1000  1.0000000  2198       0.0219780   500000  0.5000000  0
+499136  userC    506621    0.00011795710702  29    0.0285103  6593       0.0659341   500000  0.5000000  0
+499137  userC    506621    0.00011795710567  29    0.0285045  6593       0.0659341   500000  0.5000000  0
+499138  userC    506621    0.00011795710413  28    0.0284979  6593       0.0659341   500000  0.5000000  0
+499139  userC    506621    0.00011795710278  28    0.0284921  6593       0.0659341   500000  0.5000000  0
+```
+
+#### <a name="cshare"/> cshare
+
+Wrapper for Slurm's sshare command with custom output format to list the raw share(s) assigned to users, their recent usage and their resulting fair share.
+Example output:
+
+```
+SlurmAccount    SlurmUser    RawShares  NormalizedShares  RawUsage   NormalizedUsage  EffectiveUsage  FairShare  LevelFS            TRESRunMins
+============    =========    =========  ================  ========   ===============  ==============  =========  =======            ===========
+root                                    0.000000          113872206                   0.000000                                      cpu=137703,mem=3204775596,energy=0,node=31091,billing=519855,fs/disk=0,vmem=0,pages=0
+ root           root         1          0.500000          0          0.000000         0.000000        1.000000   inf                cpu=0,mem=0,energy=0,node=0,billing=0,fs/disk=0,vmem=0,pages=0
+ users                       1          0.500000          113872206  1.000000         1.000000                   0.500000           cpu=137703,mem=3204775596,energy=0,node=31091,billing=519855,fs/disk=0,vmem=0,pages=0
+  group1                     parent     0.500000          53110578   0.466405         0.466405                                      cpu=19363,mem=820313361,energy=0,node=13129,billing=118725,fs/disk=0,vmem=0,pages=0
+   group1       userA        1          0.005587          0          0.000000         0.000000        0.417582   69872977.459919    cpu=0,mem=0,energy=0,node=0,billing=0,fs/disk=0,vmem=0,pages=0
+   group1       userB        1          0.005587          938998     0.008246         0.008246        0.115385   0.677485           cpu=0,mem=0,energy=0,node=0,billing=0,fs/disk=0,vmem=0,pages=0
+   group1       userC        1          0.005587          345425     0.003033         0.003033        0.142857   1.841664           cpu=0,mem=0,energy=0,node=0,billing=0,fs/disk=0,vmem=0,pages=0
+  group2                     parent     0.500000          6921258    0.060781         0.060781                                      cpu=0,mem=0,energy=0,node=0,billing=0,fs/disk=0,vmem=0,pages=0
+   group2       userD        1          0.005587          0          0.000000         0.000000        0.994505   inf                cpu=0,mem=0,energy=0,node=0,billing=0,fs/disk=0,vmem=0,pages=0
+   group2       userE        1          0.005587          6921258    0.060781         0.060781        0.032967   0.091914           cpu=0,mem=0,energy=0,node=0,billing=0,fs/disk=0,vmem=0,pages=0
 ```
 
 #### <a name="hpc-environment-slurm-report"/> hpc-environment-slurm-report
