@@ -552,7 +552,11 @@ function printQuota() {
   #    * or the consumed resource values exceed the quota (soft limit) values.
   #    * or the timer was triggered and the grace value is not 'none'.
   #
-  local _regex='\*$'
+  local _regex='\?'
+  if [[ "${_quota_values[2]}" =~ ${_regex} ]]; then
+    _status='?'
+  fi
+  _regex='\*$'
   for offset in {1,5}; do
     #echo "DEBUG _quota_values ${offset}: ${_quota_values[${offset}]}"
     if [[ "${_quota_values[${offset}]}" =~ ${_regex} ]]; then
