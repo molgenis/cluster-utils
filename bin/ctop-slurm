@@ -857,7 +857,7 @@ sub _GetInfo {
 			${$jobs}{$job}{'mem_r'} = _FormatMemInGB($mem_r, __LINE__);
 		} else {
 			${$jobs}{$job}{'mem_r'} = '?';
-			_PrintWarning('ERROR: Parsing ' . $squeue . ' data failed for job ' . $job . ' ('. $job_info_record . ').');
+			_PrintWarning('ERROR: Cannot parse requested amount of memory from ' . $squeue . ' data for job ' . $job . ' ('. $job_info_record . ').');
 		}
 	
 	}
@@ -986,7 +986,7 @@ sub _SupplementInfo {
 			my $cpu_u = ${$jobs}{$job}{'cpu_u'};
 			my $cpu_r = ${$jobs}{$job}{'cpu_r'};
 			my $cpu_s; # usage state.
-			if ($cpu_u eq '?') {
+			if ($cpu_u eq '?' || $cpu_r eq '?') {
 				${$jobs}{$job}{'cpu_s'} = '?';
 			} else {
 				if (($cpu_u / $cpu_r) < $res_usage_low) {
@@ -1011,15 +1011,14 @@ sub _SupplementInfo {
 				}
 			}
 		}
-		if (!defined(${$jobs}{$job}{'mem_r'}) || ${$jobs}{$job}{'mem_r'} <= 0) {
+		if (!defined(${$jobs}{$job}{'mem_r'}) || (${$jobs}{$job}{'mem_r'} ne '?' && ${$jobs}{$job}{'mem_r'} <= 0)) {
 			${$jobs}{$job}{'mem_r'} = 0.1 # default to low value if not specified to prevent illegal devide by zero errors.
 		}
 		if (defined(${$jobs}{$job}{'mem_u'}) && defined(${$jobs}{$job}{'mem_r'})) {
-
 			my $mem_u = ${$jobs}{$job}{'mem_u'};
 			my $mem_r = ${$jobs}{$job}{'mem_r'};
 			my $mem_s; # usage state.
-			if ($mem_u eq '?') {
+			if ($mem_u eq '?' || $mem_r eq '?') {
 				${$jobs}{$job}{'mem_s'} = '?';
 			} else {
 				if (($mem_u / $mem_r) < $res_usage_low) {
