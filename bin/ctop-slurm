@@ -35,6 +35,7 @@ my $colorize           = 1;        # 1 or 0
 my $color_by           = 'job';    # Assign color per job, user, qos or resources.
 my $show_summary       = 1;        # 1 or 0
 my $show_grid          = 1;        # 1 or 0
+my $dense_grid         = 1;        # 1 or 0
 my $show_queue         = 1;        # 1 or 0
 my $show_qqueue        = 0;        # 1 or 0
 my $show_jobs          = 1;        # 1 or 0
@@ -69,7 +70,7 @@ use warnings;
 use vars qw/$VERSION/;
 use Curses;
 
-$VERSION = "6.0.2";
+$VERSION = "6.0.4";
 
 #
 # Initialize global vars.
@@ -252,6 +253,8 @@ while (my $arg = shift @ARGV) {
 		$show_summary = !$show_summary;
 	} elsif ($arg eq '-G') {
 		$show_grid = !$show_grid;
+	} elsif ($arg eq '-d') {
+		$dense_grid = !$dense_grid;
 	} elsif ($arg eq '-Q') {
 		$show_queue = !$show_queue;
 	} elsif ($arg eq '-t') {
@@ -504,7 +507,7 @@ sub _MainLoop {
 	my %max_length;
 	
 	$state_count{'_nodes_total'}     = 0; # Total number of compute nodes.
-	$state_count{'_nodes_allocated'} = 0; # Allocaded compute nodes where at least one cores is allocated to a job.
+	$state_count{'_nodes_allocated'} = 0; # Allocated compute nodes where at least one cores is allocated to a job.
 	$state_count{'_cores_total'}     = 0; # Total number of CPU cores.
 	$state_count{'_cores_allocated'} = 0; # Number of CPU cores allocated to jobs.
 	$state_count{'_jobs_running'}    = 0; # Running jobs.
@@ -572,8 +575,12 @@ sub _MainLoop {
 		# Determine max length of certain names, 
 		# so we can adjust column widths accordingly.
 		#
-		($max_length{'cluster'}) = _GetMaxKeyLength(\%nodes);
-		$max_length{'node'} = 0;
+		$max_length{'cluster'} = 
+			    _GetMaxKeyLength(\%nodes) > '7'
+			  ? _GetMaxKeyLength(\%nodes)
+			  : '7'; # Default == length of column label "cluster" == 7
+		
+		$max_length{'node'} = 4; # Default == length of column label "node" == 4
 		foreach my $cluster (keys(%nodes)) {
 			my ($max_node_length_for_this_cluster) = _GetMaxKeyLength($nodes{$cluster});
 			$max_length{'node'} = 
@@ -729,7 +736,7 @@ sub _GetInfo {
 			#
 			# Get actual resource usage.
 			#
-			my $job_stat_record = `${sstat} --parsable2 --noheader -o '${sstat_format}' -j ${job}.batch`;
+			my $job_stat_record = `${sstat} --parsable2 --noheader -o '${sstat_format}' -j ${job}.batch -j ${job} 2>/dev/null`;
 			$? and do { _PrintWarning('ERROR: Retrieving data using ' . $sstat . ' failed for job ' . $job . '.') };
 			
 			#
@@ -850,7 +857,7 @@ sub _GetInfo {
 			${$jobs}{$job}{'mem_r'} = _FormatMemInGB($mem_r, __LINE__);
 		} else {
 			${$jobs}{$job}{'mem_r'} = '?';
-			_PrintWarning('ERROR: Parsing ' . $squeue . ' data failed for job ' . $job . ' ('. $job_info_record . ').');
+			_PrintWarning('ERROR: Cannot parse requested amount of memory from ' . $squeue . ' data for job ' . $job . ' ('. $job_info_record . ').');
 		}
 	
 	}
@@ -979,7 +986,7 @@ sub _SupplementInfo {
 			my $cpu_u = ${$jobs}{$job}{'cpu_u'};
 			my $cpu_r = ${$jobs}{$job}{'cpu_r'};
 			my $cpu_s; # usage state.
-			if ($cpu_u eq '?') {
+			if ($cpu_u eq '?' || $cpu_r eq '?') {
 				${$jobs}{$job}{'cpu_s'} = '?';
 			} else {
 				if (($cpu_u / $cpu_r) < $res_usage_low) {
@@ -1004,15 +1011,14 @@ sub _SupplementInfo {
 				}
 			}
 		}
-		if (!defined(${$jobs}{$job}{'mem_r'}) || ${$jobs}{$job}{'mem_r'} <= 0) {
+		if (!defined(${$jobs}{$job}{'mem_r'}) || (${$jobs}{$job}{'mem_r'} ne '?' && ${$jobs}{$job}{'mem_r'} <= 0)) {
 			${$jobs}{$job}{'mem_r'} = 0.1 # default to low value if not specified to prevent illegal devide by zero errors.
 		}
 		if (defined(${$jobs}{$job}{'mem_u'}) && defined(${$jobs}{$job}{'mem_r'})) {
-
 			my $mem_u = ${$jobs}{$job}{'mem_u'};
 			my $mem_r = ${$jobs}{$job}{'mem_r'};
 			my $mem_s; # usage state.
-			if ($mem_u eq '?') {
+			if ($mem_u eq '?' || $mem_r eq '?') {
 				${$jobs}{$job}{'mem_s'} = '?';
 			} else {
 				if (($mem_u / $mem_r) < $res_usage_low) {
@@ -1128,6 +1134,7 @@ sub _PrintGrid {
 	foreach my $cluster (sort(keys(%{$nodes}))) {
 		
 		_PrintNumberLine($max_length, $headerspaces, $columns);
+		$dense_grid and _PrintDashLine($max_length, $headerspaces, $columns);
 		
 		foreach my $node (sort(keys(%{${$nodes}{$cluster}}))) {
 			
@@ -1135,7 +1142,8 @@ sub _PrintGrid {
 				next;
 			}
 			
-			_PrintDashLine($max_length, $headerspaces, $columns);
+			$dense_grid or _PrintDashLine($max_length, $headerspaces, $columns);
+			
 			my $col = 0;
 			my $load =
 			  defined(${$nodes}{$cluster}{$node}{status}{'load'})
@@ -2385,6 +2393,10 @@ sub _PrintHelpPad {
 	clrtoeol($subpad_content);
 	move($subpad_content, ++$line, 0);
 	
+	addstr($subpad_content, $indent . 'd       Toggle dense (more compact) grid display.');
+	clrtoeol($subpad_content);
+	move($subpad_content, ++$line, 0);
+	
 	addstr($subpad_content, $indent . 'u       Show only jobs for a subset of Users.');
 	clrtoeol($subpad_content);
 	move($subpad_content, ++$line, 0);
@@ -2786,6 +2798,9 @@ sub _TopSleep {
 						_PrintWarning('ERROR: Invalid number!');
 					}
 				}
+			} elsif ($input eq 'd') {
+				$dense_grid = !$dense_grid;
+				_UpdateDisplay(@_);
 			} elsif ($input eq 'u') {
 				$input = _GetString('Limit view to "a" for all, "me" for the current user, or comma separated list of users? ');
 				if ($input) {
@@ -3093,6 +3108,10 @@ Toggle the display of the state summary.
 =item B<G>
 
 Toggle the display of the node grid.
+
+=item B<d>
+
+Toggle dense (more compact) display of the node grid.
 
 =item B<Q>
 
