@@ -205,15 +205,15 @@ function getFileSetQuotaForGPFS() {
 function getGroupQuota() {
   local _group="${1}"
   local _fs_type="${2}"
-  local _quota_type='G' # default.
   #
   # Loop over mounts and look for Logical File Systems (LFS-ses).
   #
   for _FS in $(awk -v _fs_type="${_fs_type}" '$3 == _fs_type {print $2}' /proc/mounts | sort); do
     #
-    # Initialize var to display subgroup quota in report.
+    # Initialize defaults.
     #
     local _FS_for_report='NA'
+    local _quota_type='G'
     #
     # Handle exceptions in paths, group names, etc.
     #
@@ -253,14 +253,10 @@ function getGroupQuota() {
           continue
         fi
       fi
-    elif [[ "${_group}" == "${MY_USER}" || $(getent group "${_group}" | cut -d: -f3) -lt 55100000 ]]; then
+    elif [[ "${_group}" == "${MY_USER}" || $(id "${_group}" >/dev/null 2>&1) ]]; then
       #
       # We are dealing with a user's private group, which is only used
       # for their home dir on LFS /home.
-      #
-      # Note: for UMCG entitlement in RUG Research IDVault:
-      #  Private groups have: 50.100.000 <= GID <= 55.100.000
-      #  Regular groups have: 55.100.000 <  GID <= ?
       #
       _quota_type='P' # default for home dirs.
       if [[ -d "${_FS}/home/${_group}" ]]; then
@@ -270,7 +266,6 @@ function getGroupQuota() {
         #
         _FS="${_FS}/home"
         _FS_for_report="${_FS}/${_group}"
-        _quota_type='P'
       elif [[ "${_FS}" == '/home' && -d "${_FS}/${_group}" ]]; then
         #
         # Found user's home dir on a (bind) mount from a sub folder of a complete File System.
@@ -407,7 +402,20 @@ function getGroupQuota() {
       local _offset_files_quota=6
       local _offset_files_limit=7
       local _offset_files_grace=8
-      local _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+      local _fs_quota
+      #
+      # Use project quota for this lfs if configured or default to group quota.
+      #
+      if [[ -n "${_LFS:-}" && -n "${quota_pid_increments["${_LFS}"]:-}" ]]; then
+        local _pid
+        local _gid
+        _gid="$(getent group "${_group}" | awk -F ':' '{printf $3}')"
+        _pid=$((${_gid} + ${quota_pid_increments[${_LFS}]}))
+        _fs_quota="$(lfs quota -q -h -p ${_pid} ${_FS} 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+        _quota_type='F'
+      else
+        _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+      fi
       IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}") || reportError "${LINENO}" "${?}"
       if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 9 ]]; then
         declare -a _quota_values=("${_FS_for_report}" 
@@ -631,58 +639,6 @@ function reformatQuota() {
 }
 
 #
-# Calculate the quota (soft limit) based on the hard limit.
-#
-# This assumes the quota values were assigned according to the following rules:
-#  * soft limit is in the same unit as the hard limit: e.g. if the hard limit is in GB the soft limit is too.
-#  * hard limit is max 1024. When hard limit exeeds 1024, we divide by 1024 to switch scale until the value <= 1024.
-#  * soft limit is at least 1 and hard limit is at least 2.
-#  * hard limit is 10% extra compared to the soft limit rounded to the nearest next integer.
-#  * soft  1 = hard + 10% =  1.1 -> 2  hard  * 0.91 =  1.82 ->  1
-#    soft  2 = hard + 10% =  2.2 -> 3  hard  * 0.91 =  2.73 ->  2
-#    soft  3 = hard + 10% =  3.3 -> 4  hard  * 0.91 =  3.64 ->  3
-#    ....  x = hard + 10% =  ... -> y  hard  * 0.91 =  .... ->  .
-#    soft  9 = hard + 10% =  9.9 -> 10 hard  * 0.91 =  9.10 ->  9
-#    soft 10 = hard + 10% = 11.0 -> 12 hard  * 0.91 = 10.92 -> 10
-#    soft 11 = hard + 10% = 12.1 -> 13 hard  * 0.91 = 11.83 -> 11
-#
-function computeQuotaForLimit() {
-  local _limit_value="${1}"
-  local _regex='^([0-9.,][0-9.,]*)([kMGTP]?)'
-  declare -A _unit2factors=(['k']='1' ['M']='2' ['G']='3' ['T']='4' ['P']='5')
-  declare -A _factors2unit=(['1']='k' ['2']='M' ['3']='G' ['4']='T' ['5']='P')
-  local _factor
-  #echo "DEBUG: _limit_value ${_limit_value}" >&2
-  if [[ "${_limit_value}" =~ ${_regex} ]]; then
-    local _number="${BASH_REMATCH[1]}"
-    local _unit="${BASH_REMATCH[2]}"
-    #echo "DEBUG: _number ${_number} and _unit ${_unit}" >&2
-    _number="${_number//,/}" # Remove all ',' thousand separators, which bc does not like.
-    if [[ -z "${_unit:-}" ]]; then
-      _factor='0'
-    else
-      _factor="${_unit2factors["${_unit}"]}"
-    fi
-    while [[ "${#_number}" -gt 1024 ]]; do
-      _number="$(echo "${_number}/1024" | bc -l)"
-      _factor="$((${_factor}+1))"
-    done
-    local _int="${_number%.*}"
-    printf -v _formatted_number "%'.1f" "${_number}"
-    if [[ "${_factor}" -eq 0 ]]; then
-      _quota_value="${_formatted_number}  "
-    else
-      _quota_value="${_formatted_number} ${_factors2unit[${_factor}]}"
-    fi
-  fi
-  #
-  # Return both the quota as well as the limit,
-  # because the latter may have been reformatted to use a different scale.
-  #
-  printf '%s|%s' "${_quota_value}" "${_limit_value}"
-}
-
-#
 # Reformat quota values and units by normalizing data on the same unit T (TiB, tebibyte).
 #
 function convert2TiB () {
@@ -807,6 +763,14 @@ if [[ "${ALL_GROUPS}" -eq 1 ]]; then
 fi
 
 #
+# Check if we have /etc/quota.conf file with custom settings and source it if available.
+#
+declare -A quota_pid_increments=()  # default.
+if [[ -e /etc/quota.conf ]]; then
+  source /etc/quota.conf
+fi
+
+#
 # Create list of groups for which to report quota status.
 #
 declare -a QUOTA_GROUPS=("${MY_GROUPS[@]:-}")
@@ -821,11 +785,11 @@ if [ ${ALL_GROUPS} -eq 1 ]; then
     first_column_prefix_width=27
   fi
   IFS=' ' read -a QUOTA_GROUPS <<< $(printf '%s\n' \
-                                     ${MY_GROUPS[@]} \
-                                     ${group_folders_on_this_server[@]} \
-                                     ${DEPLOY_ADMIN_GROUP} \
-                                     ${SUB_GROUPS[@]} \
-                                     | sort -u | tr '\n' ' ')
+      ${MY_GROUPS[@]} \
+      ${group_folders_on_this_server[@]} \
+      ${DEPLOY_ADMIN_GROUP} \
+      ${SUB_GROUPS[@]} \
+      | sort -u | tr '\n' ' ')
 fi
 
 #
@@ -835,9 +799,9 @@ fi
 #  * If MY_USER is a member of the DEPLOY_ADMIN_GROUP move that one to the top of the list.
 #
 IFS=' ' read -a QUOTA_GROUPS <<< "$(echo "${QUOTA_GROUPS[@]}" | \
-                                    sed "s/${MY_USER} //" | \
-                                    tr ' ' '\n' | sort | tr '\n' ' ' | \
-                                    sed "s/\(.*\) ${DEPLOY_ADMIN_GROUP}\(.*\)/${DEPLOY_ADMIN_GROUP} \1\2/")"
+    sed "s/${MY_USER} //" | \
+    tr ' ' '\n' | sort | tr '\n' ' ' | \
+    sed "s/\(.*\) ${DEPLOY_ADMIN_GROUP}\(.*\)/${DEPLOY_ADMIN_GROUP} \1\2/")"
 
 #echo "DEBUG: QUOTA_GROUPS= ${QUOTA_GROUPS[@]}"
 
@@ -857,17 +821,17 @@ if [ ${ALL_GROUPS} -eq 1 ]; then
     IFS=' ' read -a home_folders_on_this_server <<< "$(ls -1 /home/ | sort | tr '\n' ' ')"
   fi
   IFS=' ' read -a QUOTA_PRIVATE_GROUPS <<< $(printf '%s\n' \
-                                     ${MY_USER:-} \
-                                     ${home_folders_on_this_server[@]:-} \
-                                     | sort -u | tr '\n' ' ')
+      ${MY_USER:-} \
+      ${home_folders_on_this_server[@]:-} \
+      | sort -u | tr '\n' ' ')
 fi
 
 #
 # Compute length of longest group name to adjust layout.
 #
 longest_group_length=$(echo "${QUOTA_GROUPS[@]} ${QUOTA_PRIVATE_GROUPS[@]}" | \
-                       tr ' ' '\n' | \
-                       wc -L)
+    tr ' ' '\n' | \
+    wc -L)
 first_column_width=$((${first_column_prefix_width}+${longest_group_length}))
 total_width=$((4+${first_column_width}+${base_width}))
 format="(%1s) %-${first_column_width}b | %10s  %10s  %10s  %15s | %10s  %10s  %10s  %15s | %9b\n"
