@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2004,SC2059
 
 #
 ##
@@ -7,34 +8,22 @@
 #
 set -u
 set -e
+set -o pipefail
 umask 0027
-memyselfandi="$(basename $0)"
-if [[ "${BASH_VERSINFO}" -lt 4 || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
-  echo "Sorry, you need at least bash 4.x to use ${memyselfandi}." >&2
+SCRIPT_NAME="$(basename "${0}")"
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo "Sorry, you need at least bash 4.x to use ${SCRIPT_NAME}." >&2
   exit 1
 fi
-
-#
-# Make sure dots are used as decimal separator.
-#
-export LC_ALL='en_US.UTF-8'
-
-SCRIPT_NAME="$(basename ${0})"
-SCRIPT_NAME="${SCRIPT_NAME%.*sh}"
+export LC_ALL='en_US.UTF-8'  # Make sure dots are used as decimal separator.
 
 set +e
-SACCT="$(which sacct 2>/dev/null)"
-SQUEUE="$(which squeue 2>/dev/null)"
+SACCT="$(command -v sacct 2>/dev/null)"
 set -e
 if [[ ! -x "${SACCT:-}" ]]; then
 	echo "FATAL: Cannot find sacct Slurm command!"
 	exit 1
 fi
-if [[ ! -x "${SQUEUE:-}" ]]; then
-	echo "FATAL: Cannot find squeue Slurm command!"
-	exit 1
-fi
-
 declare -A mem_unit_scaling_factors=(
 	['B']='1'
 	['K']='1024'
@@ -51,7 +40,7 @@ declare -A mem_unit_scaling_factors=(
 function _usage() {
 	echo
 	echo 'Usage:'
-	echo "       ${memyselfandi} will report job efficiency for both running and finished Slurm jobs."
+	echo "       ${SCRIPT_NAME} will report job efficiency for finished Slurm jobs."
 	echo '       Job efficiency is determined as:'
 	echo '          CPU efficiency (%) = average CPU core usage / requested cores'
 	echo '          Mem efficiency (%) = peak memory usage / requested memory'
@@ -83,13 +72,8 @@ function _usage() {
 # Custom signal trapping functions (one for each signal) required to format log lines depending on signal.
 #
 function trapSig() {
-	local _trap_function="${1}"
-	local _line="${2}"
-	local _function="${3}"
-	local _status="${4}"
-	shift 4
 	for _sig; do
-		trap "${_trap_function} ${_sig} ${_line} ${_function} ${_status}" "${_sig}"
+		trap 'trapHandler '"${_sig}"' ${LINENO} ${FUNCNAME[0]:-main} ${?}' "${_sig}"
 	done
 }
 
@@ -98,10 +82,14 @@ function trapHandler() {
 	local _problematic_line="${2:-'?'}"
 	local _problematic_function="${3:-'main'}"
 	local _status="${4:-$?}"
-	local _log_message="WARN: Trapped ${_signal} signal."
-	local _log_timestamp=$(date "+%Y-%m-%dT%H:%M:%S") # Creates ISO 8601 compatible timestamp.
-	local _log_line_prefix=$(printf "%-s %-s %-5s @ L%-s(%-s)>" "${SCRIPT_NAME}" "${_log_timestamp}" "${_problematic_line}" "${_problematic_function}")
-	local _log_line="${_log_line_prefix} ${_log_message}"
+	local _log_message
+	local _log_timestamp
+	local _log_line_prefix
+	local _log_line
+	_log_message="WARN: Trapped ${_signal} signal."
+	_log_timestamp=$(date "+%Y-%m-%dT%H:%M:%S") # Creates ISO 8601 compatible timestamp.
+	_log_line_prefix=$(printf "%-s %-5s @ L%-s(%-s)>" "${SCRIPT_NAME}" "${_log_timestamp}" "${_problematic_line}" "${_problematic_function}")
+	_log_line="${_log_line_prefix} ${_log_message}"
 	if [[ ${_status} -ne 0 ]]; then
 		printf '%s\n' "${_log_line}" 1>&2
 	else
@@ -110,9 +98,9 @@ function trapHandler() {
 	#
 	# Reset trap and exit.
 	#
-	echo -e "\e[0m\n" # reset all terminal formatting attributes.
+	echo -e "\e[0m\n" # Reset all terminal formatting attributes.
 	trap - EXIT
-	exit ${_status}
+	exit "${_status}"
 }
 
 function _getJobEfficiency() {
@@ -129,17 +117,22 @@ function _getJobEfficiency() {
 	#   _e = efficiency in %
 	#
 	local _sacct_format_r='JobId,JobName,Timelimit,AllocCPUs,ReqMem'
-	local _sacct_format_u='JobId,Elapsed,AveCPU,MaxRSS'
+	local _sacct_format_u='JobId,Elapsed,AveCPU,MaxRSS,State'
 	
 	for _job_id in "${_job_ids[@]}"
 	do
-		#echo "DEBUG: Fetching job stats using sacct from Slurm DB for: ${_job_id}" >&2
-		IFS='|' read -ra _job_info_r <<< $("${SACCT}" -o "${_sacct_format_r}" -p -j "${_job_id}"       | grep "${_job_id}|"      | tail -n 1)
-		IFS='|' read -ra _job_info_u <<< $("${SACCT}" -o "${_sacct_format_u}" -p -j "${_job_id}.batch" | grep "${_job_id}.batch" | tail -n 1)
-		
-		if [[ ${#_job_info_r[@]:0} -ge 1 && ${#_job_info_u[@]:0} -ge 1 ]]
+		local _query_result
+		#echo "DEBUG: Fetching job stats from Slurm DB using sacct for: ${_job_id}" >&2
+		_query_result="$("${SACCT}" -o "${_sacct_format_r}" -p -n -j "${_job_id}" | grep "^${_job_id}[|]")"
+		IFS='|' read -r -a _job_info_r <<< "${_query_result}"
+		_query_result="$("${SACCT}" -o "${_sacct_format_u}" -p -n -j "${_job_id}" | grep "^${_job_id}[.]" | head -n 1)"
+		IFS='|' read -r -a _job_info_u <<< "${_query_result}"
+		#
+		# Parse sacct results.
+		#
+		if [[ "${#_job_info_r[@]:0}" -ge 1 && "${#_job_info_u[@]:0}" -ge 1 ]]
 		then
-			#echo "DEBUG:     ${_job_info_requested[@]} ${_job_info_used[@]}"
+			#echo "DEBUG:     ${_job_info_r[@]} ${_job_info_u[@]}"
 			if [[ -z "${_job_info_r[1]:-}" ]]
 			then
 				_job_name="${_job_id}"
@@ -162,6 +155,14 @@ function _getJobEfficiency() {
 				fi
 			fi
 			#
+			# Skip running for which not all info can be fetched from the Slurm accounting DataBase. 
+			#
+			if [[ ( -z "${_job_info_u[2]:-}" || -z "${_job_info_u[3]:-}" ) && "${_job_info_u[4]:-}" =~ 'RUNNING' ]]
+			then
+				echo "WARN: Skipping job ${_job_id} with state 'RUNNING'. Use other commands to profile running jobs." >&2
+				continue
+			fi
+			#
 			# Compute efficiency
 			#
 			local _walltime_r="${_job_info_r[2]}"
@@ -173,17 +174,27 @@ function _getJobEfficiency() {
 			local _mem_r="${_job_info_r[4]}"
 			local _mem_u="${_job_info_u[3]}"
 			local _mem_e=''
-			local _walltime_seconds_r=$(_time2Seconds "${_walltime_r}")
-			local _walltime_seconds_u=$(_time2Seconds "${_walltime_u}")
-			local _cpu_seconds_u=$(_time2Seconds "${_cpu_u}")
-			local _mem_in_bytes_r=$(_mem2Bytes "${_mem_r}")
-			local _mem_in_bytes_u=$(_mem2Bytes "${_mem_u}")
+			local _walltime_seconds_r
+			local _walltime_seconds_u
+			local _cpu_seconds_u
+			local _mem_in_bytes_r
+			local _mem_in_bytes_u
+			_walltime_seconds_r=$(set -e; _time2Seconds "${_walltime_r}")
+			_walltime_seconds_u=$(set -e; _time2Seconds "${_walltime_u}")
+			_cpu_seconds_u=$(set -e; _time2Seconds "${_cpu_u}")
+			_mem_in_bytes_r=$(set -e; _mem2Bytes "${_mem_r}")
+			_mem_in_bytes_u=$(set -e; _mem2Bytes "${_mem_u}")
 			if [[ "${_walltime_seconds_r}" -gt 0 ]]
 			then
-				_walltime_e=$(printf "%.2f" "$(echo "scale=5; ((${_walltime_seconds_u} / ${_walltime_seconds_r}) * 100)" | bc)")
-				if [[ "${_walltime_seconds_u}" -gt 0 ]]
+				_walltime_e="$(echo "scale=5; ((${_walltime_seconds_u} / ${_walltime_seconds_r}) * 100)" | bc)"
+				_walltime_e=$(printf "%.2f" "${_walltime_e}")
+				if [[ "${_cpu_seconds_u}" == '?' ]]
 				then
-					_cpu_e=$(printf "%.2f" "$(echo "scale=5; (((${_cpu_seconds_u} / ${_cpu_r}) / ${_walltime_seconds_u}) * 100)" | bc)")
+					_cpu_e='0.00'
+				elif [[ "${_walltime_seconds_u}" -gt 0 ]]
+				then
+					_cpu_e="$(echo "scale=5; (((${_cpu_seconds_u} / ${_cpu_r}) / ${_walltime_seconds_u}) * 100)" | bc)"
+					_cpu_e=$(printf "%.2f" "${_cpu_e}")
 				else
 					_cpu_e='0.00'
 				fi
@@ -192,16 +203,25 @@ function _getJobEfficiency() {
 			fi
 			if [[ "${_mem_in_bytes_r}" -gt 0 ]]
 			then
-				_mem_e=$(printf "%.2f" "$(echo "scale=5; ((${_mem_in_bytes_u} / ${_mem_in_bytes_r}) * 100)" | bc)")
+				if [[ "${_mem_in_bytes_u}" == '?' ]]
+				then
+					_mem_e='0.00'
+				else
+					_mem_e="$(echo "scale=5; ((${_mem_in_bytes_u} / ${_mem_in_bytes_r}) * 100)" | bc)"
+					_mem_e=$(printf "%.2f" "${_mem_e}")
+				fi
 			else
 				_mem_e='0.00'
 			fi
 			#
 			# Add color/formatting.
 			#
-			local _formatted_walltime_e="$(_formatEfficiency "${_walltime_e}" '75' '90')"
-			local _formatted_cpu_e="$(_formatEfficiency "${_cpu_e}" '90' '100')"
-			local _formatted_mem_e="$(_formatEfficiency "${_mem_e}" '75' '90')"
+			local _formatted_walltime_e
+			local _formatted_cpu_e
+			local _formatted_mem_e
+			_formatted_walltime_e="$(set -e; _formatEfficiency "${_walltime_e}" '75' '90')"
+			_formatted_cpu_e="$(set -e; _formatEfficiency "${_cpu_e}" '90' '100')"
+			_formatted_mem_e="$(set -e; _formatEfficiency "${_mem_e}" '75' '90')"
 		else
 			_job_name="ERROR: Failed to parse sacct output for job ${_job_id}"
 			local _walltime_r='?'
@@ -223,9 +243,12 @@ function _getJobEfficiency() {
 		#
 		if [[ -n "${_job_type:-}" && "${_formatted_walltime_e}" != '?' ]]
 		then
-			local _rounded_walltime_e="$(printf '%.0f' ${_walltime_e})"
-			local _rounded_cpu_e="$(printf '%.0f' ${_cpu_e})"
-			local _rounded_mem_e="$(printf '%.0f' ${_mem_e})"
+			local _rounded_walltime_e
+			local _rounded_cpu_e
+			local _rounded_mem_e
+			_rounded_walltime_e="$(printf '%.0f' "${_walltime_e}")"
+			_rounded_cpu_e="$(printf '%.0f' "${_cpu_e}")"
+			_rounded_mem_e="$(printf '%.0f' "${_mem_e}")"
 			if [[ -z "${job_efficiency_summarized_by_job_type[${_job_type}]+isset}" ]]
 			then
 				#
@@ -237,7 +260,7 @@ function _getJobEfficiency() {
 				# Recompute number of jobs, min efficiency, max efficiency & average efficiency
 				# and update info for this job type.
 				#
-				IFS=':' read -a _job_type_stats <<< "${job_efficiency_summarized_by_job_type["${_job_type}"]}"
+				IFS=':' read -r -a  _job_type_stats <<< "${job_efficiency_summarized_by_job_type["${_job_type}"]}"
 				local _number_of_jobs="${_job_type_stats[0]}"
 				local _min_walltime_e="${_job_type_stats[1]}"
 				local _avg_walltime_e="${_job_type_stats[2]}"
@@ -256,7 +279,7 @@ function _getJobEfficiency() {
 				then
 					_max_walltime_e="${_rounded_walltime_e}"
 				fi
-				_avg_walltime_e="$(_updateAverage "${_avg_walltime_e}" "${_walltime_e}" "${_number_of_jobs}")"
+				_avg_walltime_e="$(set -e; _updateAverage "${_avg_walltime_e}" "${_walltime_e}" "${_number_of_jobs}")"
 				if [[ "${_rounded_cpu_e}" -lt "${_min_cpu_e}" ]]
 				then
 					_min_cpu_e="${_rounded_cpu_e}"
@@ -264,7 +287,7 @@ function _getJobEfficiency() {
 				then
 					_max_cpu_e="${_rounded_cpu_e}"
 				fi
-				_avg_cpu_e="$(_updateAverage "${_avg_cpu_e}" "${_cpu_e}" "${_number_of_jobs}")"
+				_avg_cpu_e="$(set -e; _updateAverage "${_avg_cpu_e}" "${_cpu_e}" "${_number_of_jobs}")"
 				if [[ "${_rounded_mem_e}" -lt "${_min_mem_e}" ]]
 				then
 					_min_mem_e="${_rounded_mem_e}"
@@ -272,7 +295,7 @@ function _getJobEfficiency() {
 				then
 					_max_mem_e="${_rounded_mem_e}"
 				fi
-				_avg_mem_e="$(_updateAverage "${_avg_mem_e}" "${_mem_e}" "${_number_of_jobs}")"
+				_avg_mem_e="$(set -e; _updateAverage "${_avg_mem_e}" "${_mem_e}" "${_number_of_jobs}")"
 				_number_of_jobs="$((${_number_of_jobs} + 1))"
 				job_efficiency_summarized_by_job_type["${_job_type}"]="${_number_of_jobs}:${_min_walltime_e}:${_avg_walltime_e}:${_max_walltime_e}:${_min_cpu_e}:${_avg_cpu_e}:${_max_cpu_e}:${_min_mem_e}:${_avg_mem_e}:${_max_mem_e}"
 			fi
@@ -299,8 +322,9 @@ function _time2Seconds() {
 		local _minutes="${BASH_REMATCH[2]}"
 		local _seconds="${BASH_REMATCH[3]}"
 	else
-		echo "FATAL: time as reported by Slurm command sacct in unsupported format; Got: ${_slurm_time:-}." >&2
-		exit 1
+		echo "WARN: time as reported by Slurm command sacct in unsupported format; Got: ${_slurm_time:-}." >&2
+		echo -n '?'
+		return
 	fi
 	
 	local _time_in_seconds="$((${_days}*24*60*60 + ${_hours#0}*60*60 + ${_minutes#0}*60 + ${_seconds#0}))"
@@ -316,30 +340,36 @@ function _mem2Bytes() {
 		local    _mem="${BASH_REMATCH[1]}"
 		local   _unit="${BASH_REMATCH[2]}"
 	else
-		echo "FATAL: memory as reported by Slurm command sacct in unsupported format; Got: ${_slurm_mem:-}." >&2
-		exit 1
+		echo "WARN: memory as reported by Slurm command sacct in unsupported format; Got: ${_slurm_mem:-}." >&2
+		echo -n '?'
+		return
 	fi
-	local _mem_in_bytes=$(printf "%.0f" "$(echo "scale=5; (${_mem}*${mem_unit_scaling_factors[${_unit}]})" | bc)")
+	local _mem_in_bytes
+	_mem_in_bytes="$(echo "scale=5; (${_mem}*${mem_unit_scaling_factors[${_unit}]})" | bc)"
+	_mem_in_bytes=$(printf "%.0f" "${_mem_in_bytes}")
 	echo -n "${_mem_in_bytes}"
 }
 
 function _updateAverage() {
 	local _average_old="${1}"
-	local _new_value="$(printf '%.0f' "${2}")"
-	local _number_of_values_old="${3}"
 	local _average_new="${_average_old}" # default in case we cannot compute a new average.
-	
+	local _new_value
+	local _number_of_values_old="${3}"
+	_new_value="$(printf '%.0f' "${2}")"
 	_average_new="$(( ((${_average_old}*${_number_of_values_old}) + ${_new_value}) / (${_number_of_values_old} + 1) ))"
-	echo -n "$(printf '%.0f' ${_average_new})"
+	echo -n "$(printf '%.0f' "${_average_new}")"
 }
 
 function _formatEfficiency() {
 	local _unformattedEfficiency="${1}"
 	local _lower_threshold="${2}"
 	local _upper_threshold="${3}"
-	local _unformattedEfficiencyAsInt="$(printf '%.0f' ${_unformattedEfficiency})"
-	local _padding="$(head -c $((7 - ${#_unformattedEfficiency})) /dev/zero | tr '\0' ' ')"
-	local _formattedEfficiency="${_unformattedEfficiency}" # default.
+	local _unformattedEfficiencyAsInt
+	local _padding
+	local _formattedEfficiency
+	_unformattedEfficiencyAsInt="$(printf '%.0f' "${_unformattedEfficiency}")"
+	_padding="$(head -c $((7 - ${#_unformattedEfficiency})) /dev/zero | tr '\0' ' ')"
+	_formattedEfficiency="${_unformattedEfficiency}" # default.
 	#
 	# Colors:
 	#
@@ -372,7 +402,7 @@ function _formatEfficiency() {
 #
 # Trap all exit signals: HUP(1), INT(2), QUIT(3), TERM(15), ERR.
 #
-trapSig 'trapHandler' '${LINENO}' '${FUNCNAME:-main}' '$?' HUP INT QUIT TERM EXIT ERR
+trapSig HUP INT QUIT TERM EXIT ERR
 
 total_width=127
 header1_format="%-60s | %-20s | %-20s | %-18s\n"
@@ -382,8 +412,8 @@ body_format_jobs="%-60s | %11b  %7b |   %9b  %7b | %9b  %7b\n"
 body_format_job_types="%-60s |    %3b <= %3b <= %3b |    %3b <= %3b <= %3b | %3b <= %3b <= %3b\n"
 SEP_SINGLE_CHAR='-'
 SEP_DOUBLE_CHAR='='
-SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
-SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
+SEP_SINGLE="$(head -c "${total_width}" /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")"
+SEP_DOUBLE="$(head -c "${total_width}" /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")"
 
 #
 # Get commandline arguments.
@@ -406,15 +436,19 @@ do
 			job_list_file="${OPTARG}"
 			;;
 		p)
-			#echo 'FATAL: not yet implemented.'
-			#exit 1
 			job_group_pattern="${OPTARG}"
 			;;
 		\?)
-			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Invalid option -${OPTARG}. Try $(basename $0) -h for help."
+			echo "FATAL: Invalid option -${OPTARG}. Try ${SCRIPT_NAME} -h for help."
+			exit 1
 			;;
 		:)
-			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Option -${OPTARG} requires an argument. Try $(basename $0) -h for help."
+			echo "FATAL: Option -${OPTARG} requires an argument. Try ${SCRIPT_NAME} -h for help."
+			exit 1
+			;;
+		*)
+			echo "FATAL: Unhandled option. Try ${SCRIPT_NAME} -h for help."
+			exit 1
 			;;
 		esac
 done
@@ -422,8 +456,8 @@ done
 #
 # Configure terminal colors.
 #
-echo -e "\e[40m"  # black background.
-echo -e "\e[97m"  # white text/foreground.
+echo -e -n "\e[40m"  # black background.
+echo -e -n "\e[97m"  # white text/foreground.
 
 #
 # Check & parse args.
@@ -436,19 +470,19 @@ then
 else
 	if [[ -n "${job_ids_string:-}" ]]
 	then
-		IFS=',' read -a job_ids <<< "$(echo "${job_ids_string}" \
+		job_ids_string="$(echo "${job_ids_string}" \
 				| tr ',' '\n' \
-				| sort -n \
-				| tr '\n' ',' \
-				| sed 's/,$//')"
+				| sort -n)"
+		readarray -t job_ids <<< "${job_ids_string}"
 	elif [[ -n "${job_out_dir:-}" ]]
 	then
 		if [[ -d "${job_out_dir}" && -r "${job_out_dir}" && -x "${job_out_dir}" ]]
 		then
-			IFS=',' read -a job_ids <<< "$(tail -n 5 "${job_out_dir}"/*.out \
+			job_ids_string="$(tail -n 5 "${job_out_dir}"/*.out \
 				| grep -o 'Resources consumed by job [0-9]*'\
 				| sed 's/Resources consumed by job //' \
-				| sort -n | tr '\n' ','| sed 's/,$//')"
+				| sort -n)"
+			readarray -t job_ids <<< "${job_ids_string}"
 		else
 			echo "FATAL: directory ${job_out_dir} does not exist or is not accessible. Check path and permissions".
 			exit 1
@@ -462,9 +496,8 @@ else
 	then
 	if [[ -f "${job_list_file}" && -r "${job_list_file}" ]]
 		then
-		IFS=',' read -a job_ids <<< "$(cat "${job_list_file}" \
-				| grep -o '[0-9][0-9]*$'\
-				| sort -n | tr '\n' ','| sed 's/,$//')"
+			job_ids_string=$(grep -o '[0-9][0-9]*$' "${job_list_file}" | sort -n)
+			readarray -t job_ids <<< "${job_ids_string}"
 		else
 			echo "FATAL: file ${job_list_file} does not exist or is not accessible. Check path and permissions".
 			exit 1
@@ -512,7 +545,7 @@ then
 	echo "${SEP_SINGLE}"
 	for job_type in "${!job_efficiency_summarized_by_job_type[@]}"
 	do
-		IFS=':' read -a job_type_stats <<< "${job_efficiency_summarized_by_job_type["${job_type}"]}"
+		IFS=':' read -r -a job_type_stats <<< "${job_efficiency_summarized_by_job_type["${job_type}"]}"
 		printf "${body_format_job_types}" "${job_type} [${job_type_stats[0]}]" \
 			"${job_type_stats[1]}" "${job_type_stats[2]}" "${job_type_stats[3]}" \
 			"${job_type_stats[4]}" "${job_type_stats[5]}" "${job_type_stats[6]}" \
@@ -528,6 +561,6 @@ echo "${SEP_DOUBLE}"
 #
 # Exit cleanly on success.
 #
-echo -e "\e[0m\n" # reset all terminal formatting attributes.
+echo -e -n "\e[0m" # reset all terminal formatting attributes.
 trap - EXIT
 exit 0
