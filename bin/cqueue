@@ -9,4 +9,4 @@ set -o pipefail
 ### Wrapper for squeue with custom output format.
 ##
 #
-squeue "${@}" -o "%i|%P|%q||%j|%u|%t|%M|%R|%S|%p" | column -t -s "|"
+squeue "${@}" -S 't,-p,i' -o '%i|%P|%q||%j|%u|%t|%M|%R|%S|%p' | column -t -s '|'
