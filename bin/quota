@@ -1,4 +1,6 @@
 #!/bin/bash
+# shellcheck disable=SC2004,SC2059
+
 #
 # Script to report quota for user and his groups on several dirs from shared/network storage.
 #
@@ -8,12 +10,13 @@
 ### Environment and bash sanity.
 ##
 #
-if [[ "${BASH_VERSINFO}" -lt 4 || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   echo "Sorry, you need at least bash 4.x to use ${0}." >&2
   exit 1
 fi
 set -u
 set -e
+set -o pipefail
 umask 0027
 SCRIPT_NAME="$(basename "${0}")"
 
@@ -108,22 +111,22 @@ function reportError() {
   #
   # Notify syslog.
   #
-  #logger ${LOG2STDERR} "$(hostname) - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: FATAL: quota reporting FAILED!"
-  #logger ${LOG2STDERR} "$(hostname) - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Exit code = $exit_status"
-  #logger ${LOG2STDERR} "$(hostname) - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Error message = ${errorMessage}"
+  #logger ${LOG2STDERR} "${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: FATAL: quota reporting FAILED!"
+  #logger ${LOG2STDERR} "${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Exit code = $exit_status"
+  #logger ${LOG2STDERR} "${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Error message = ${errorMessage}"
   #
   # Notify on STDOUT.
   #
   echo "
-$(hostname) - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: FATAL: quota reporting FAILED!
-$(hostname) - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Exit code = $exit_status
-$(hostname) - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Error message = ${errorMessage}
+${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: FATAL: quota reporting FAILED!
+${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Exit code = ${exit_status}
+${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Error message = ${errorMessage}
 "
   #
   # Reset trap and exit.
   #
   trap - EXIT
-  exit ${exit_status}
+  exit "${exit_status}"
 }
 
 #
@@ -156,10 +159,10 @@ function getFileSetQuotaForGPFS() {
   local _files_grace=12
   local _LFS=''
   local _fs_path='' # fileset_path used for reporting to users.
-  for _FILESYS in $(awk '$3 == "gpfs" {print $1}' /proc/mounts | sort)
-  do
-    _FILESYS=${_FILESYS/\/dev\//}
-    if [ ${_FILESYS} == 'gpfs2' ]; then
+  
+  awk '$3 == "gpfs" {print $1}' /proc/mounts | sort | while IFS= read -r _FILESYS; do
+    _FILESYS="${_FILESYS/\/dev\//}"
+    if [[ ${_FILESYS} == 'gpfs2' ]]; then
       _LFS='tmp02'
     else 
       reportError "${LINENO}" "${?}" 'Unknown GPFS detected. Request admin to update quota reporting!'
@@ -167,23 +170,27 @@ function getFileSetQuotaForGPFS() {
       # Handle exceptions in paths, file set names, etc.
       #
     fi
-    if [ ${_group} == ${DEPLOY_ADMIN_GROUP} ]; then
+    if [[ "${_group}" == "${DEPLOY_ADMIN_GROUP}" ]]; then
       _fs_path="/.envsync/${_LFS}"
     else
       _fs_path="/groups/${_group}/${_LFS}"
     fi
-    local _fileset_quota="$(${_QUOTA} -j ${_fs_name} ${_FILESYS} --block-size ${_BSIZE}${_BUNIT} 2> /dev/null)"  || reportError "${LINENO}" "${?}"
-    IFS=' ' read -a _body_values   <<< $(echo "${_fileset_quota}" | tail -n 1)                                   || reportError "${LINENO}" "${?}"
-    if [[ -n ${_body_values[0]:-} && ${#_body_values[@]:-} -eq 14 ]]; then
+    local _fileset_quota
+    _fileset_quota="$("${_QUOTA}" -j "${_fs_name}" "${_FILESYS}" --block-size "${_BSIZE}${_BUNIT}" 2> /dev/null | tail -n 1)" \
+        || reportError "${LINENO}" "${?}"
+    IFS=' ' read -r -a _body_values <<< "${_fileset_quota}" || reportError "${LINENO}" "${?}"
+    if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 14 ]]; then
       #
       # Reformat GiB -> TiB if BUNIT was 'G'.
       #
       for offset in {${_size_used},${_size_quota},${_size_limit}}; do
         if [[ "${_body_values[${offset}]}" -gt 1024 ]]; then
           #echo "DEBUG: larger than 1024: ${_body_values[${offset}]}"
-          _body_values[${offset}]=$(printf "%'.1fT" $(echo "scale=1; ${_body_values[${offset}]}/1024" | bc))
+          local _divided_by_1024
+          _divided_by_1024="$(echo "scale=1; ${_body_values[${offset}]}/1024" | bc)"
+          _body_values["${offset}"]=$(printf "%'.1fT" "${_divided_by_1024}")
         else
-          _body_values[${offset}]="${_body_values[${offset}]}G"
+          _body_values["${offset}"]="${_body_values["${offset}"]}G"
         fi
       done
       #
@@ -208,7 +215,7 @@ function getGroupQuota() {
   #
   # Loop over mounts and look for Logical File Systems (LFS-ses).
   #
-  for _FS in $(awk -v _fs_type="${_fs_type}" '$3 == _fs_type {print $2}' /proc/mounts | sort); do
+  awk -v _fs_type="${_fs_type}" '$3 == _fs_type {print $2}' /proc/mounts | sort | while IFS= read -r _FS; do
     #
     # Initialize defaults.
     #
@@ -226,6 +233,7 @@ function getGroupQuota() {
         # We are dealing with a (bind) mount of the shared software environment
         # from a sub folder of a complete File System.
         #
+        # shellcheck disable=SC2269
         _FS="${_FS}"
       elif [[ "${_FS}" == '/mnt/env'* ]]; then
         #
@@ -240,11 +248,12 @@ function getGroupQuota() {
         # E.g. /mnt/umcgst[0-9]+/apps
         #
         _FS="${_FS}/apps"
+        echo "DEBUG 3: ${_FS}"
       else
         #
         # Look for secondary copies of the primary apps folder on a comple FS.
         #
-        if [[ "${_FS}" == '/mnt/'* && $(find "${_FS}" -mindepth 2 -maxdepth 2 -type d -path "${_FS}"'/env[0-9]*/apps' 2>&1 >&/dev/null) ]]; then
+        if [[ "${_FS}" == '/mnt/'* ]] && find "${_FS}" -mindepth 2 -maxdepth 2 -type d -path "${_FS}"'/env[0-9]*/apps' | grep -q "."; then
           _FS=$(find "${_FS}" -mindepth 2 -maxdepth 2 -type d -path "${_FS}"'/env[0-9]*/apps')
         else
           #
@@ -253,7 +262,7 @@ function getGroupQuota() {
           continue
         fi
       fi
-    elif [[ "${_group}" == "${MY_USER}" || $(id "${_group}" >/dev/null 2>&1) ]]; then
+    elif [[ "${_group}" == "${MY_USER}" ]] || id "${_group}" >/dev/null 2>&1; then
       #
       # We are dealing with a user's private group, which is only used
       # for their home dir on LFS /home.
@@ -282,49 +291,52 @@ function getGroupQuota() {
       #
       # Regular groups only use /groups/... LFS-ses.
       #
-      local _regex='([a-z]*-[a-z]*)(-rar[0-9]*)$'
-      if [[ "${_group}" =~ ${_regex} ]]; then
-        # We are dealing with sub group.
-        local _main_group="${BASH_REMATCH[1]}"
-        local _sub_group="${BASH_REMATCH[2]}"
-        if [[ -e "${_FS}/groups/${_main_group}" ]]; then
-          #
-          # We have a group's LFS folder on a complete FS.
-          # E.g. /mnt/umcgst02/groups/umcg-gonl/prm03
-          #
-          local _LFS=$(find "${_FS}/groups/${_main_group}" -mindepth 1 -maxdepth 1 -type d | grep -o '[^/]*$')
-          if [[ "${PLAIN_TEXT}" -eq 1 ]]; then
-            _FS_for_report="${_FS}/groups/${_group}/${_LFS}"
-          else
-            _FS_for_report="${_FS}/groups/${_main_group}\e[7m${_sub_group}\e[27m/${_LFS}"
-          fi
-        elif [[ "${_FS}" == "/groups/${_main_group}/"* ]]; then
-          #
-          # We have a group's LFS dir on a (bind) mount from a sub folder of a complete File System.
-          # E.g. /groups/umcg-gonl/prm03
-          #
-          local _LFS="${_FS/*\//}"
-          if [[ "${PLAIN_TEXT}" -eq 1 ]]; then
-            _FS_for_report="/groups/${_group}/${_LFS}"
-          else
-            _FS_for_report="/groups/${_main_group}\e[7m${_sub_group}\e[27m/${_LFS}"
-          fi
-        else
-          #
-          # Skip sub group without main group on this FS.
-          #
-          continue
-        fi
-        #
-        # Compute difference in length between this group and the longest one 
-        # to add padding spaces to workaround a printf bug for %b strings with shell escapes.
-        #
-        local _padding_length=$((${longest_group_length} - ${#_group}))
-        if [[ ${_padding_length} -gt 0 ]]; then
-          local _padding=$(head -c ${_padding_length} /dev/zero | tr '\0' ' ')
-          _FS_for_report="${_FS_for_report}${_padding}"
-        fi
-      elif [[ -e "${_FS}/groups/${_group}" ]]; then
+      #local _regex='([a-z]*-[a-z]*)(-rar[0-9]*)$'
+      #if [[ "${_group}" =~ ${_regex} ]]; then
+      #  # We are dealing with sub group.
+      #  local _main_group="${BASH_REMATCH[1]}"
+      #  local _sub_group="${BASH_REMATCH[2]}"
+      #  local _LFS
+      #  if [[ -e "${_FS}/groups/${_main_group}" ]]; then
+      #    #
+      #    # We have a group's LFS folder on a complete FS.
+      #    # E.g. /mnt/umcgst02/groups/umcg-gonl/prm03
+      #    #
+      #    _LFS=$(find "${_FS}/groups/${_main_group}" -mindepth 1 -maxdepth 1 -type d | grep -o '[^/]*$')
+      #    if [[ "${PLAIN_TEXT}" -eq 1 ]]; then
+      #      _FS_for_report="${_FS}/groups/${_group}/${_LFS}"
+      #    else
+      #      _FS_for_report="${_FS}/groups/${_main_group}\e[7m${_sub_group}\e[27m/${_LFS}"
+      #    fi
+      #  elif [[ "${_FS}" == "/groups/${_main_group}/"* ]]; then
+      #    #
+      #    # We have a group's LFS dir on a (bind) mount from a sub folder of a complete File System.
+      #    # E.g. /groups/umcg-gonl/prm03
+      #    #
+      #    _LFS="${_FS/*\//}"
+      #    if [[ "${PLAIN_TEXT}" -eq 1 ]]; then
+      #      _FS_for_report="/groups/${_group}/${_LFS}"
+      #    else
+      #      _FS_for_report="/groups/${_main_group}\e[7m${_sub_group}\e[27m/${_LFS}"
+      #    fi
+      #  else
+      #    #
+      #    # Skip sub group without main group on this FS.
+      #    #
+      #    continue
+      #  fi
+      #  #
+      #  # Compute difference in length between this group and the longest one 
+      #  # to add padding spaces to workaround a printf bug for %b strings with shell escapes.
+      #  #
+      #  local _padding_length=$((${longest_group_length} - ${#_group}))
+      #  if [[ ${_padding_length} -gt 0 ]]; then
+      #    local _padding
+      #    _padding="$(head -c "${_padding_length}" /dev/zero | tr '\0' ' ')"
+      #    _FS_for_report="${_FS_for_report}${_padding}"
+      #  fi
+      #elif [[ -e "${_FS}/groups/${_group}" ]]; then
+      if [[ -e "${_FS}/groups/${_group}" ]]; then
         # We are dealing with a main group on a complete FS.
         _FS=$(find "${_FS}/groups/${_group}" -mindepth 1 -maxdepth 1 -type d)
       elif [[ "${_FS}" == "/groups/${_group}/"* ]]; then
@@ -365,8 +377,9 @@ function getGroupQuota() {
       local _offset_size_limit=3
       local _offset_files_used=4
       local _offset_files_limit=5
-      local _fs_quota="$(beegfs-ctl --getquota --csv --gid ${_group} 2> /dev/null )"  || reportError "${LINENO}" "${?}"
-      IFS=',' read -a _body_values  <<< $(echo "${_fs_quota}" | tail -n 1)            || reportError "${LINENO}" "${?}"
+      local _fs_quota
+      _fs_quota="$(beegfs-ctl --getquota --csv --gid "${_group}" 2> /dev/null | tail -n 1)"  || reportError "${LINENO}" "${?}"
+      IFS=',' read -r -a _body_values  <<< "${_fs_quota}"                                    || reportError "${LINENO}" "${?}"
       if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 6 ]]; then
         declare -a _quota_values=("${_FS_for_report}" 
                    "${_body_values[${_offset_size_used}]}"  'NA' "${_body_values[${_offset_size_limit}]}"  'none' 
@@ -411,12 +424,12 @@ function getGroupQuota() {
         local _gid
         _gid="$(getent group "${_group}" | awk -F ':' '{printf $3}')"
         _pid=$((${_gid} + ${quota_pid_increments[${_LFS}]}))
-        _fs_quota="$(lfs quota -q -h -p ${_pid} ${_FS} 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+        _fs_quota="$(lfs quota -q -h -p "${_pid}" "${_FS}" 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
         _quota_type='F'
       else
-        _fs_quota="$(lfs quota -q -h -g ${_group} ${_FS} 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+        _fs_quota="$(lfs quota -q -h -g "${_group}" "${_FS}" 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
       fi
-      IFS=' ' read -a _body_values  <<< $(echo "${_fs_quota}") || reportError "${LINENO}" "${?}"
+      IFS=' ' read -r -a _body_values <<< "${_fs_quota}" || reportError "${LINENO}" "${?}"
       if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 9 ]]; then
         declare -a _quota_values=("${_FS_for_report}" 
                    "${_body_values[${_offset_size_used}]}"  "${_body_values[${_offset_size_quota}]}"  "${_body_values[${_offset_size_limit}]}"  "${_body_values[${_offset_size_grace}]}" 
@@ -459,10 +472,12 @@ function getGroupQuota() {
       local _offset_size_limit='2'
       local _offset_files_used='3'
       local _offset_files_limit='2'
-      local _directory_bsize_quota="$(df -T -k "${_FS_for_report}" 2> /dev/null)" || reportError "${LINENO}" "${?}"
-      local _directory_inode_quota="$(df -T -i "${_FS_for_report}" 2> /dev/null)" || reportError "${LINENO}" "${?}"
-      IFS=' ' read -a _bsize_values <<< $(echo "${_directory_bsize_quota}" | tail -n 1) || reportError "${LINENO}" "${?}"
-      IFS=' ' read -a _inode_values <<< $(echo "${_directory_inode_quota}" | tail -n 1) || reportError "${LINENO}" "${?}"
+      local _directory_bsize_quota
+      local _directory_inode_quota
+      _directory_bsize_quota="$(df -T -k "${_FS_for_report}" 2> /dev/null | tail -n 1)" || reportError "${LINENO}" "${?}"
+      _directory_inode_quota="$(df -T -i "${_FS_for_report}" 2> /dev/null | tail -n 1)" || reportError "${LINENO}" "${?}"
+      IFS=' ' read -r -a _bsize_values <<< "${_directory_bsize_quota}" || reportError "${LINENO}" "${?}"
+      IFS=' ' read -r -a _inode_values <<< "${_directory_inode_quota}" || reportError "${LINENO}" "${?}"
       if [[ -n "${_bsize_values[0]:-}" && "${#_bsize_values[@]:-}" -eq 7 && -n "${_inode_values[0]:-}" && "${#_inode_values[@]:-}" -eq 7 ]]; then
         #
         # Define default values not reported by df.
@@ -472,17 +487,18 @@ function getGroupQuota() {
         local _files_quota='?'
         local _files_grace='?'
         #
-        # Check if missing values can be supplemented from a .quota cache file.
+        # Check if missing values can be supplemented from a .quotacache file.
         #
-        if [[ -r "${_FS_for_report}/.quota" ]]; then
-          _size_quota='?'
-          _files_quota='?'
+        if [[ -r "${_FS_for_report}.quotacache" ]]; then
+          if grep -q 'soft=' "${_FS_for_report}.quotacache"; then
+            _size_quota=$(grep 'soft=' "${_FS_for_report}.quotacache" | sed 's/soft=//')
+          fi
         fi
         #
         # Declare quota values array and display values.
         #
         declare -a _quota_values=("${_FS_for_report}" 
-                   "${_bsize_values[${_offset_size_used}]}k" "${_size_quota}k" "${_bsize_values[${_offset_size_limit}]}k" "${_size_grace}" 
+                   "${_bsize_values[${_offset_size_used}]}k" "${_size_quota}" "${_bsize_values[${_offset_size_limit}]}k" "${_size_grace}" 
                    "${_inode_values[${_offset_files_used}]}" "${_files_quota}" "${_inode_values[${_offset_files_limit}]}" "${_files_grace}")
         printQuota 'F' "${_quota_values[@]}"
       else
@@ -505,12 +521,12 @@ function parseAndFormatRegularQuota() {
   #
   # Parse string into array.
   #
-  IFS=' ' read -a _quota_values <<< $(echo "${_quota_report_line}") || reportError "${LINENO}" "${?}"
+  IFS=' ' read -r -a _quota_values <<< "${_quota_report_line}" || reportError "${LINENO}" "${?}"
   #
   # Check for missing and wrong grace values.
   #
   local _regex='[0-9]{5}days'
-  if [[ "${_quota_values[1]}" =~ '*' ]]; then # Check for size (bytes) quota
+  if [[ "${_quota_values[1]}" =~ \* ]]; then # Check for size (bytes) quota
     #
     # Fix grace reporting bug when grace has expired.
     # (Bug will result in ridiculous high grace value starting at 49697days and counting down.)
@@ -525,7 +541,7 @@ function parseAndFormatRegularQuota() {
     #
     _quota_values=("${_quota_values[@]:0:4}" 'none' "${_quota_values[@]:4}")
   fi
-  if [[ "${_quota_values[5]}" =~ '*' ]]; then # Check for files (inodes) quota
+  if [[ "${_quota_values[5]}" =~ \* ]]; then # Check for files (inodes) quota
     #
     # Fix grace reporting bug when grace has expired.
     # (Bug will result in ridiculous high grace value starting at 49697days and counting down.)
@@ -551,7 +567,7 @@ function printQuota() {
   local _status='Ok' # default.
   local _quota_type="${1}"
   shift
-  declare -a local _quota_values=("${@}")
+  declare -a _quota_values=("${@}")
   #
   # Check and append status.
   #
@@ -587,14 +603,14 @@ function printQuota() {
   # Reformat quota values and units: keeping resolution using different units.
   #
   for offset in {1,2,3,5,6,7}; do
-    _quota_values[${offset}]=$(reformatQuota "${_quota_values[${offset}]}")
+    _quota_values[${offset}]="$(set -e; reformatQuota "${_quota_values[${offset}]}")"
   done
   #
   # Optionally normalize data on the same unit (T).
   #
   if [[ "${NORMALIZE_QUOTA}" -eq 1 ]]; then
     for offset in {1,2,3}; do
-      _quota_values[${offset}]=$(convert2TiB "${_quota_values[${offset}]}")
+      _quota_values[${offset}]="$(set -e; convert2TiB "${_quota_values[${offset}]}")"
     done
   fi
   printf "${format}" "${_quota_type}" "${_quota_values[@]}" "${_status}"
@@ -630,10 +646,12 @@ function reformatQuota() {
     done
     printf -v _formatted_number "%'.1f" "${_number}"
     if [[ "${_factor}" -eq 0 ]]; then
-      _quota_value="${_formatted_number}  "
+      _quota_value="${_formatted_number}  "  # Add padding for missing unit.
     else
       _quota_value="${_formatted_number} ${_factors2unit[${_factor}]}"
     fi
+  elif [[ "${_quota_value}" == '?' ]]; then
+    _quota_value="${_quota_value}  "  # Add padding for missing unit.
   fi
   printf '%s' "${_quota_value}"
 }
@@ -647,16 +665,18 @@ function convert2TiB () {
   local _base=1024
   local _exp=4
   local _divide=1
+  local _computed_value
   declare -A _factors=(['k']=1 ['M']=2 ['G']=3)
   if [[ "${_value}" =~ ${_regex} ]]; then
       local _number="${BASH_REMATCH[1]}"
       local _unit="${BASH_REMATCH[2]}"
       if [[ -n "${_unit:-}" ]]; then
-        _exp=$((${_exp} - ${_factors[$_unit]}))
+        _exp=$((${_exp} - ${_factors[${_unit}]}))
       fi
       _divide=$((${_base} ** ${_exp}))
       _number="${_number//,/}" # Remove all ',' thousand separators, which bc does not like.
-      printf "%'.1f T" $(echo "scale=1; ${_number}/${_divide}" | bc)
+      _computed_value="$(echo "scale=1; ${_number}/${_divide}" | bc)"
+      printf "%'.1f T" "${_computed_value}"
   else
     #
     # Return input "as is".
@@ -674,7 +694,6 @@ function convert2TiB () {
 #
 # Check were we are running this script.
 #
-#SERVER_NAME="$(hostname)"
 MY_DIR=$( cd -P "$( dirname "$0" )" && pwd )
 #
 # Get the name of the user executing this script.
@@ -692,15 +711,14 @@ declare -a SUB_GROUPS=('umcg-gonl-rar1' 'umcg-gonl-rar2' 'umcg-gonl-rar3' 'umcg-
 #
 # Get list of groups the user executing this script is a member of.
 #  * Remove a (private) group with the same name as MY_USER from the list if present.
-#  * Sort the remaining groups in alphabetical order and
-#  * If MY_USER is a member of the DEPLOY_ADMIN_GROUP move that one to the top of the list.
+#  * Remove DEPLOY_ADMIN_GROUP is present.
 #
-IFS=' ' read -a MY_GROUPS <<< "$(id -Gn)"
+id_result="$(id -Gn | sed "s/${MY_USER} //" | sed "s/ ${DEPLOY_ADMIN_GROUP}//")"
+IFS=' ' read -r -a MY_GROUPS <<< "${id_result}"
 
 #
 # Choose customised quota binary and associated first column length.
 #
-OPTIONS="--show-mntpoint --hide-device"
 QUOTA="${MY_DIR}/quota-30-left"
 #
 # Formatting constants.
@@ -723,7 +741,7 @@ ALL_GROUPS=0
 PLAIN_TEXT=0
 NORMALIZE_QUOTA=0
 while getopts ":hnap" opt; do
-  case ${opt} in
+  case "${opt}" in
     h)
       showHelp
       ;;
@@ -742,16 +760,11 @@ while getopts ":hnap" opt; do
     :)
       reportError "${LINENO}" '1' "Option -${OPTARG} requires an argument. Try \"${SCRIPT_NAME} -h\" for help."
       ;;
+    *)
+      reportError "${LINENO}" '1' "Invalid argument \"-${OPTARG}\". Try \"${SCRIPT_NAME} -h\" for help."
+      ;;
   esac
 done
-
-#
-# Make sure there are no extra arguments we did not expect nor need.
-#
-shift $(($OPTIND - 1))
-if [[ -n "${1:-}" ]]; then
-  reportError "${LINENO}" '1' "Invalid argument \"${1:-}\". Try \"${SCRIPT_NAME} -h\" for help."
-fi
 
 #
 # Check if we are root if data was requested for all groups.
@@ -767,82 +780,86 @@ fi
 #
 declare -A quota_pid_increments=()  # default.
 if [[ -e /etc/quota.conf ]]; then
+  # shellcheck disable=SC1091
   source /etc/quota.conf
 fi
 
 #
 # Create list of groups for which to report quota status.
 #
-declare -a QUOTA_GROUPS=("${MY_GROUPS[@]:-}")
-if [ ${ALL_GROUPS} -eq 1 ]; then
+declare -a QUOTA_GROUPS
+if [[ "${ALL_GROUPS}" -eq 1 ]]; then
   if [[ -d /groups/ ]]; then
-    IFS=' ' read -a group_folders_on_this_server <<< "$(ls -1 /groups/ | sort | tr '\n' ' ')"
+    find_result="$(find /groups/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort)"
+    readarray -t group_folders_on_this_server <<< "${find_result}"
     # /groups/ + ( /tmp0* || prm0* || scr0* || arc0*) = 14 long.
     first_column_prefix_width=14
   else
-    IFS=' ' read -a group_folders_on_this_server <<< "$(find /mnt/*/groups/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort | tr '\n' ' ')"
+    find_result="$(find /mnt/*/groups/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort)"
+    readarray -t group_folders_on_this_server <<< "${find_result}"
     # /mnt/umcgst0*/groups/ + ( /tmp0* || prm0* || scr0* || arc0*) = 27 long.
     first_column_prefix_width=27
   fi
-  IFS=' ' read -a QUOTA_GROUPS <<< $(printf '%s\n' \
-      ${MY_GROUPS[@]} \
-      ${group_folders_on_this_server[@]} \
-      ${DEPLOY_ADMIN_GROUP} \
-      ${SUB_GROUPS[@]} \
-      | sort -u | tr '\n' ' ')
+  combined_groups=$(printf '%s\n' \
+      "${MY_GROUPS[@]}" \
+      "${group_folders_on_this_server[@]}" \
+      "${SUB_GROUPS[@]}" \
+      | sort -u)
+  readarray -t QUOTA_GROUPS <<< "${combined_groups}"
+  QUOTA_GROUPS=("${DEPLOY_ADMIN_GROUP}" "${QUOTA_GROUPS[@]}")
+else
+  QUOTA_GROUPS=("${MY_GROUPS[@]:-}")
+  #
+  # If MY_USER is a member of the DEPLOY_ADMIN_GROUP move that one to the top of the list.
+  #
+  id_result="$(id -Gn)"
+  if [[ "${id_result}" =~ ${DEPLOY_ADMIN_GROUP} ]]; then
+    QUOTA_GROUPS=("${DEPLOY_ADMIN_GROUP}" "${QUOTA_GROUPS[@]}")
+  fi
 fi
-
-#
-# Filter groups for which to report quota status.
-#  * Remove a (private) group with the same name as MY_USER from the list if present.
-#  * Sort the remaining groups in alphabetical order and
-#  * If MY_USER is a member of the DEPLOY_ADMIN_GROUP move that one to the top of the list.
-#
-IFS=' ' read -a QUOTA_GROUPS <<< "$(echo "${QUOTA_GROUPS[@]}" | \
-    sed "s/${MY_USER} //" | \
-    tr ' ' '\n' | sort | tr '\n' ' ' | \
-    sed "s/\(.*\) ${DEPLOY_ADMIN_GROUP}\(.*\)/${DEPLOY_ADMIN_GROUP} \1\2/")"
-
-#echo "DEBUG: QUOTA_GROUPS= ${QUOTA_GROUPS[@]}"
+#echo "DEBUG: QUOTA_GROUPS=${QUOTA_GROUPS[@]}"
 
 #
 # Create list of private user groups for which to report quota status.
 #
-declare -a QUOTA_PRIVATE_GROUPS=("${MY_USER:-}")
-if [ ${ALL_GROUPS} -eq 1 ]; then
+declare -a QUOTA_PRIVATE_GROUPS
+if [[ "${ALL_GROUPS}" -eq 1 ]]; then
   #
   # Search for homes in /mnt/*/home/..."
   #
-  IFS=' ' read -a home_folders_on_this_server <<< "$(find /mnt/*/home/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort | tr '\n' ' ')"
-  if [[ ${#home_folders_on_this_server[@]:0} < 1 ]]; then
+  home_folders_on_this_server="$(find /mnt/*/home/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort)"
+  if [[ -z "${home_folders_on_this_server:-}" ]]; then
     #
     # Search for homes in /home/..."
     #
-    IFS=' ' read -a home_folders_on_this_server <<< "$(ls -1 /home/ | sort | tr '\n' ' ')"
+    home_folders_on_this_server="$(find /home/ -maxdepth 1 -mindepth 1 -type d | sed 's|/.*/||' | sort)"
   fi
-  IFS=' ' read -a QUOTA_PRIVATE_GROUPS <<< $(printf '%s\n' \
-      ${MY_USER:-} \
-      ${home_folders_on_this_server[@]:-} \
-      | sort -u | tr '\n' ' ')
+  combined_users="$(printf '%s\n' \
+      "${MY_USER:-}" \
+      "${home_folders_on_this_server:-}" \
+      | sort -u)"
+  readarray -t QUOTA_PRIVATE_GROUPS <<< "${combined_users}"
+else
+  QUOTA_PRIVATE_GROUPS=("${MY_USER:-}")
 fi
 
 #
 # Compute length of longest group name to adjust layout.
 #
-longest_group_length=$(echo "${QUOTA_GROUPS[@]} ${QUOTA_PRIVATE_GROUPS[@]}" | \
+longest_group_length=$(echo "${QUOTA_GROUPS[*]} ${QUOTA_PRIVATE_GROUPS[*]}" | \
     tr ' ' '\n' | \
     wc -L)
 first_column_width=$((${first_column_prefix_width}+${longest_group_length}))
 total_width=$((4+${first_column_width}+${base_width}))
 format="(%1s) %-${first_column_width}b | %10s  %10s  %10s  %15s | %10s  %10s  %10s  %15s | %9b\n"
 format_hh="    %-${first_column_width}s | %51s | %51s |\n"
-SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
-SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
+SEP_SINGLE=$(head -c "${total_width}" /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
+SEP_DOUBLE=$(head -c "${total_width}" /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 
 #
 # Configure warning messages with or without additional formatting.
 #
-if [ ${PLAIN_TEXT} -eq 1 ]; then
+if [[ "${PLAIN_TEXT}" -eq 1 ]]; then
   QUOTA_EXCEEDED_WARNING='EXCEEDED!'
 else
   QUOTA_EXCEEDED_WARNING='\e[5mEXCEEDED!\e[25m'
@@ -867,7 +884,7 @@ echo "${quota_report_header}"
 #
 set +e
 trap - ERR
-user_quota="$(${QUOTA} -sQwA -u ${OPTIONS} 2> /dev/null)"
+user_quota="$("${QUOTA}" -sQwA -u --show-mntpoint --hide-device 2> /dev/null)"
 trap 'reportError $LINENO' ERR
 set -e
 quota_user_report=$(echo "${user_quota}" | tail -n+3 | sort -u)
@@ -888,24 +905,23 @@ set -e
 # 
 for THIS_PRIVATE_GROUP in "${QUOTA_PRIVATE_GROUPS[@]}"
 do
+  #echo "DEBUG: THIS_PRIVATE_GROUP = ${THIS_PRIVATE_GROUP}"
   #
   # For home dirs from shared Lustre systems:
   #  * for a user's "private group" with a group name that is the same as the user name.
   #  * under control of the Lustre quota tool: lfs quota ....
   #
-  quota_private_group_report=$(getGroupQuota "${THIS_PRIVATE_GROUP}" 'lustre')
-  #echo "DEBUG: THIS_PRIVATE_GROUP = ${THIS_PRIVATE_GROUP}"
+  quota_private_group_report=$(set -e; getGroupQuota "${THIS_PRIVATE_GROUP}" 'lustre')
   if [[ -n "${quota_private_group_report:-}" ]]; then
     echo "${SEP_SINGLE}"
     echo "${quota_private_group_report}"
   fi
   #
-  # For home dirs from shared I{silon OneFS systems:
+  # For home dirs from shared Isilon OneFS systems:
   #  * for a user's "private group" with a group name that is the same as the user name.
   #  * not controlled by normal nor dedicated quota command; values can partially be retrieved using df ....
   #
-  quota_private_group_report=$(getGroupQuota "${THIS_PRIVATE_GROUP}" 'nfs4')
-  #echo "DEBUG: THIS_PRIVATE_GROUP = ${THIS_PRIVATE_GROUP}"
+  quota_private_group_report=$(set -e; getGroupQuota "${THIS_PRIVATE_GROUP}" 'nfs4')
   if [[ -n "${quota_private_group_report:-}" ]]; then
     echo "${SEP_SINGLE}"
     echo "${quota_private_group_report}"
@@ -925,10 +941,10 @@ done
 #
 for THIS_GROUP in "${QUOTA_GROUPS[@]}"
 do
-  quota_group_report_lustre=$(getGroupQuota "${THIS_GROUP}" 'lustre')
-  quota_group_report_beegfs=$(getGroupQuota "${THIS_GROUP}" 'beegfs')
-  quota_group_report_onefs=$(getGroupQuota "${THIS_GROUP}" 'nfs4')
-  quota_fileset_report=$(getFileSetQuotaForGPFS "${THIS_GROUP}")
+  quota_group_report_lustre=$(set -e; getGroupQuota "${THIS_GROUP}" 'lustre')
+  quota_group_report_beegfs=$(set -e; getGroupQuota "${THIS_GROUP}" 'beegfs')
+  quota_group_report_onefs=$(set -e; getGroupQuota "${THIS_GROUP}" 'nfs4')
+  quota_fileset_report=$(set -e; getFileSetQuotaForGPFS "${THIS_GROUP}")
   if [[ -n "${quota_group_report_lustre:-}" ||
         -n "${quota_group_report_beegfs:-}" ||
         -n "${quota_group_report_onefs:-}" ||
