@@ -59,7 +59,7 @@ else
     #
     # Check if specified user exists
     #
-    if [[ -n "$(getent passwd "${1}")" ]]; then
+    if getent passwd "${1}" > /dev/null; then
         user="${1}"
     else
         _Usage
