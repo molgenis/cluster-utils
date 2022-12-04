@@ -1,8 +1,10 @@
 #!/bin/bash
 
+set -o pipefail
+
 #
 ##
 ### Wrapper for sinfo with custom output format.
 ##
 #
-sinfo "${@}" -o "%P|%a|%D|%T|%z|%c|%B|%m|%d|%f|%g|%l|%s|%S|%N|%E" | column -t -s "|"
+sinfo "${@}" -o "%P|%a|%D|%T|%z|%c|%B|%m|%d|%f|%g|%l|%s|%S|%N|%E" | column -t -s '|'

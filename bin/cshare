@@ -5,7 +5,10 @@
 ### Wrapper for sshare with custom output format.
 ##
 #
-cat <(echo 'SlurmAccount|SlurmUser|RawShares|NormalizedShares|RawUsage|NormalizedUsage|EffectiveUsage|FairShare|LevelFS|TRESRunMins') \
-	<(echo '============|=========|=========|================|========|===============|==============|=========|=======|===========') \
-	<(sshare -P -a -l -n -o "Account,User%-30,RawShares,NormShares,RawUsage,NormUsage,EffectvUsage,FairShare,LevelFS,TRESRunMins%-90") \
+sshare_result="$(sshare -P -a -l -n -o 'Account,User%-30,RawShares,NormShares,RawUsage,NormUsage,EffectvUsage,FairShare,LevelFS,TRESRunMins%-90')"
+
+printf '%s\n%s\n%s\n' \
+		'SlurmAccount|SlurmUser|RawShares|NormalizedShares|RawUsage|NormalizedUsage|EffectiveUsage|FairShare|LevelFS|TRESRunMins' \
+		'============|=========|=========|================|========|===============|==============|=========|=======|===========' \
+		"${sshare_result}" \
 	| column -t -s '|'

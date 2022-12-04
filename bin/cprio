@@ -9,6 +9,7 @@
 
 set -e
 set -u
+set -o pipefail
 
 #
 ##
@@ -87,6 +88,7 @@ do
 	esac
 done
 
-cat <(echo '#####|####|ABSOLUTE|NORMALIZED|ABS|NORM|ABSOLUTE|NORMALIZED|ABS|NORM|####') \
-	<(sprio ${filter_arguments:-} -o "%.i|%20u|%.Y|%.y|%.A|%.a|%.F|%.f|%.Q|%.q|%.N" | uniq | (sed -u 1q; sort -t '|' -k "${sort_field}")) \
-	| column -t -s '|'
+extra_header='#####|####|ABSOLUTE|NORMALIZED|ABS|NORM|ABSOLUTE|NORMALIZED|ABS|NORM|####'
+# shellcheck disable=SC2086
+sprio_result="$(sprio ${filter_arguments:-} -o "%.i|%20u|%.Y|%.y|%.A|%.a|%.F|%.f|%.Q|%.q|%.N" | uniq | (sed -u 1q; sort -t '|' -k "${sort_field}"))"
+printf '%s\n%s' "${extra_header}" "${sprio_result}" | column -t -s '|'

@@ -7,6 +7,7 @@
 #
 set -u
 set -e
+set -o pipefail
 umask 0027
 memyselfandi="$(basename "${0}")"
 if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
@@ -18,7 +19,7 @@ set +e
 SSH_LDAP_HELPER="$(command -v 'ssh-ldap-helper' 2>/dev/null)"
 set -e
 SSH_LDAP_HELPER="${SSH_LDAP_HELPER:-/usr/libexec/openssh/ssh-ldap-helper}"
-if [ ! -x "${SSH_LDAP_HELPER:-}" ]; then
+if [[ ! -x "${SSH_LDAP_HELPER:-}" ]]; then
 	echo "WARN: Cannot find ssh-ldap-helper, which is required to determine if users are (in)active."
 fi
 
@@ -180,7 +181,9 @@ function _PrintUserInfo() {
 	local _format="${2}"
 	local _login_expiration_time="${users["${_user}"]}"
 	local _gecos
-	IFS=':' read -r -a _user_info <<< "$(getent passwd "${_user}" | cut -d ':' -s -f 1,5)"
+	local _getent_result
+	getent_result="$(getent passwd "${_user}" | cut -d ':' -s -f 1,5)"
+	IFS=':' read -r -a _user_info <<< "${getent_result}"
 	if [[ "${_login_expiration_time}" == '9999-99-99' || "${_login_expiration_time}" == 'NA' ]]; then
 		_login_expiration_time='Never'
 	fi
@@ -227,8 +230,8 @@ total_width=110
 base_header_length=25
 SEP_SINGLE_CHAR='-'
 SEP_DOUBLE_CHAR='='
-SEP_SINGLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
-SEP_DOUBLE=$(head -c ${total_width} /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
+SEP_SINGLE=$(head -c "${total_width}" /dev/zero | tr '\0' "${SEP_SINGLE_CHAR}")
+SEP_DOUBLE=$(head -c "${total_width}" /dev/zero | tr '\0' "${SEP_DOUBLE_CHAR}")
 PADDING=$(head -c $((${total_width}-${base_header_length})) /dev/zero | tr '\0' ' ')
 
 #
@@ -237,7 +240,7 @@ PADDING=$(head -c $((${total_width}-${base_header_length})) /dev/zero | tr '\0' 
 sort_by='account'
 plain_text=0
 while getopts "g:ehp" opt; do
-	case $opt in
+	case "${opt}" in
 		e)
 			sort_by='login_expiration_date'
 			;;
@@ -252,10 +255,13 @@ while getopts "g:ehp" opt; do
 			group="${OPTARG}"
 			;;
 		\?)
-			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Invalid option -${OPTARG}. Try ${memyselfandi} -h for help."
+			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Invalid option -${OPTARG}. Try \"${memyselfandi} -h\" for help."
 			;;
 		:)
-			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Option -${OPTARG} requires an argument. Try ${memyselfandi} -h for help."
+			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Option -${OPTARG} requires an argument. Try \"${memyselfandi} -h\" for help."
+			;;
+		*)
+			log4Bash "${LINENO}" "${FUNCNAME:-main}" '1' "Invalid option \"-${OPTARG}\". Try \"${memyselfandi} -h\" for help."
 			;;
 		esac
 done
@@ -275,22 +281,24 @@ fi
 #
 # Compile list of groups.
 #
-if [[ -z ${group:-} ]]; then
+if [[ -z "${group:-}" ]]; then
 	#
 	# Get all groups of the current user.
 	#
-	IFS=' ' read -r -a groups <<< "$(id -Gn | tr ' ' '\n' | sort | tr '\n' ' ')"
+	id_result="$(id -Gn | tr ' ' '\n' | sort | tr '\n' ' ')"
+	IFS=' ' read -r -a groups <<< "${id_result}"
 else
 	if [[ ${group} == 'all' ]]; then
 		#
 		# List all groups with group folders on this server.
 		#
-		IFS=' ' read -r -a groups <<< "$(find '/groups/' -mindepth 1 -maxdepth 1 -type d | grep -o '[^/]*$' | sort | tr '\n' ' ')"
+		find_result="$(find '/groups/' -mindepth 1 -maxdepth 1 -type d | grep -o '[^/]*$' | sort | tr '\n' ' ')"
+		IFS=' ' read -r -a groups <<< "${find_result}"
 	else
 		#
 		# Check if specified group exists.
 		#
-		if [[ $(getent group "${group}") ]]; then
+		if getent group "${group}" > /dev/null; then
 			groups=("${group}")
 		else
 			_Usage
@@ -313,7 +321,7 @@ LDAP_SEARCH_BASE="$(awk '$1 == "base" {print $2}' "${ldap_config_file}")"
 #
 declare -A users
 for group in "${groups[@]}"; do
-	if [[ "${group}" == "$(whoami)" ]]; then
+	if [[ "${group}" == "${USER}" ]]; then
 		#
 		# Skip private group.
 		#
@@ -334,51 +342,65 @@ for group in "${groups[@]}"; do
 	#
 	# Get group owners.
 	#
-	if [[ $(getent group "${group}-owners") ]]; then
-		query_result="$(getent group "${group}-owners" | sed 's/.*://')"
+	if getent group "${group}-owners" | grep -q "."; then
+		query_result="$(getent group "${group}-owners" \
+			| sed 's/.*://' \
+			| tr ',' '\n' \
+			| sort
+		)"
 		if [[ -n "${query_result:-}" ]]; then
-			readarray -t owners < <( printf '%s\n' "${query_result}" | tr ',' '\n' | sort )
+			readarray -t owners <<< "${query_result}"
 		fi
 	else
 		query_result=$(ldapsearch -LLL -o ldif-wrap=no \
-			-H "${LDAP_HOST}" \
-			-D "${LDAP_USER}" \
-			-w "${LDAP_PASS}" \
-			-b "${LDAP_SEARCH_BASE}" \
-			"(&(ObjectClass=${ldap_group_object_class})(cn:dn:=${group}))" \
-			"${ldap_group_owner_attr}"
+				-H "${LDAP_HOST}" \
+				-D "${LDAP_USER}" \
+				-w "${LDAP_PASS}" \
+				-b "${LDAP_SEARCH_BASE}" \
+				"(&(ObjectClass=${ldap_group_object_class})(cn:dn:=${group}))" \
+				"${ldap_group_owner_attr}" \
+			| grep "${ldap_group_owner_attr}" \
+			| sed "s/${ldap_group_owner_attr}: //" \
+			| sort
 		)
-		if printf '%s\n' "${query_result:-}" | grep -q "${ldap_group_owner_attr}"; then
-			readarray -t owners < <( printf '%s\n' "${query_result}" | grep "${ldap_group_owner_attr}" | sed "s/${ldap_group_owner_attr}: //" | sort )
+		if [[ -n "${query_result:-}" ]]; then
+			readarray -t owners <<< "${query_result}"
 		fi
 	fi
 	#
 	# Get data managers for this group.
 	#
-	if [[ $(getent group "${group}-dms") ]]; then
-		query_result="$(getent group "${group}-dms" | sed 's/.*://')"
+	if getent group "${group}-dms" | grep -q "."; then
+		query_result="$(getent group "${group}-dms" \
+				| sed 's/.*://' \
+				| tr ',' '\n' \
+				| sort
+		)"
 		if [[ -n "${query_result:-}" ]]; then
-			readarray -t dms < <( printf '%s\n' "${query_result}" | tr ',' '\n' | sort )
+			readarray -t dms <<< "${query_result}"
 		fi
 	else
 		query_result=$(ldapsearch -LLL -o ldif-wrap=no \
-			-H "${LDAP_HOST}" \
-			-D "${LDAP_USER}" \
-			-w "${LDAP_PASS}" \
-			-b "${LDAP_SEARCH_BASE}" \
-			"(&(ObjectClass=${ldap_group_object_class})(cn:dn:=${group}))" \
-			"${ldap_group_datamanager_attr}"
+				-H "${LDAP_HOST}" \
+				-D "${LDAP_USER}" \
+				-w "${LDAP_PASS}" \
+				-b "${LDAP_SEARCH_BASE}" \
+				"(&(ObjectClass=${ldap_group_object_class})(cn:dn:=${group}))" \
+				"${ldap_group_datamanager_attr}" \
+			| grep "${ldap_group_datamanager_attr}" \
+			| sed "s/${ldap_group_datamanager_attr}: //" \
+			| sort
 		)
-		if printf '%s\n' "${query_result:-}" | grep -q "${ldap_group_datamanager_attr}"; then
-			readarray -t dms < <( printf '%s\n' "${query_result}" | grep "${ldap_group_datamanager_attr}" | sed "s/${ldap_group_datamanager_attr}: //" | sort )
+		if [[ -n "${query_result:-}" ]]; then
+			readarray -t dms <<< "${query_result}"
 		fi
 	fi
 	#
 	# Get regular members.
 	#
-	query_result="$(getent group "${group}" | sed 's/.*://')"
+	query_result="$(getent group "${group}" | sed 's/.*://' | tr ',' '\n' | sort)"
 	if [[ -n "${query_result:-}" ]]; then
-		readarray -t members < <( printf '%s\n' "${query_result}" | tr ',' '\n' | sort )
+		readarray -t members <<< "${query_result}"
 	fi
 	#
 	# Append all accounts to non-redundant users hash.

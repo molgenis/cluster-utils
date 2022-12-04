@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2004,SC2059
 
 #
 ##
@@ -7,6 +8,7 @@
 #
 set -u
 set -e
+set -o pipefail
 umask 0027
 memyselfandi=$(basename "${0}")
 if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
@@ -57,7 +59,7 @@ else
     #
     # Check if specified user exists
     #
-    if [[ -n "$(getent passwd "${1}")" ]]; then
+    if getent passwd "${1}" > /dev/null; then
         user="${1}"
     else
         _Usage
@@ -75,7 +77,8 @@ echo "${SEP_SINGLE}"
 #
 # Get basic details from passwd.
 #
-IFS=':' read -ra user_info <<< "$(getent passwd "${user}" | cut -d ':' -s -f 1,3,5,6,7)"
+getent_result="$(getent passwd "${user}" | cut -d ':' -s -f 1,3,5,6,7)"
+IFS=':' read -ra user_info <<< "${getent_result}"
 if [[ "${#user_info[@]:0}" -eq 5 ]]; then
     printf "${basic_format}" 'User'  "${user_info[0]}"
     printf "${basic_format}" 'UID'   "${user_info[1]}"
@@ -94,7 +97,8 @@ primary_GID="$(id -g "${user}")"
 #
 # Get secondary groups.
 #
-IFS=' ' read -ra secondary_groups <<< "$(id -Gn "${user}" | tr ' ' '\n' | sort | tr '\n' ' ')"
+id_result="$(id -Gn "${user}" | tr ' ' '\n' | sort)"
+readarray -t secondary_groups <<< "${id_result}"
 #
 # Determine length of longest group for formatting.
 #
@@ -113,7 +117,7 @@ echo "User ${user} is authorized for access to groups:"
 echo "${SEP_SINGLE}"
 printf "${group_format}" 'Primary group' "${primary_group}" "${primary_GID}";
 for secondary_group in "${secondary_groups[@]:-}"; do
-    if [[ "$secondary_group" == "${primary_group}" ]]; then
+    if [[ "${secondary_group}" == "${primary_group}" ]]; then
         continue
     else
         secondary_GID="$(getent group "${secondary_group}" | cut -d ':' -s -f 3)"
