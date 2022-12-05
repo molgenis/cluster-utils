@@ -171,7 +171,7 @@ for JOB_ID in "${JOB_IDS[@]}"; do
         echo "${JOB_ID} ${user} ${efficiency_average} $effcpu ${cores}" | awk '{ printf("%c[0;31m%-8s  %-8s   = %-6s%%  (%s of %s)\n%c[0m", 27, $1, $2, $3, $4, $5, 27); }'
     else
         #echo "${JOB_ID} ${user} ${efficiency_average} $effcpu ${cores}" | awk '{ printf("%-8s  %-8s   = %-6s%%  (%s of %s)\n", $1, $2, $3, $4, $5); }'
-        printf "%-8s  %-8s   = %-6s%%  (%s of %s)\n" ${JOB_ID} ${user} ${efficiency_average} $effcpu ${cores}
+        printf "%-8s  %-8s   = %-6s%%  (%s of %s)\n" "${JOB_ID}" "${user}" "${efficiency_average}" "${effcpu}" "${cores}"
     fi
 done
 
