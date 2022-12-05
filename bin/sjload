@@ -96,7 +96,8 @@ elif [[ "${JOBS:-}" == 'ALL' ]]; then
 elif [[ "${JOBS:-}" =~ ',' ]]; then
     readarray -t JOB_IDS <<< "${JOBS//,/\n}"
 elif [[ "${JOBS:-}" =~ ^([0-9]*)-([0-9]*)$ ]]; then
-    JOB_IDS=({${BASH_REMATCH[1]}..${BASH_REMATCH[2]}})
+    JOBS="$(seq "{${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")"
+    readarray -t JOB_IDS <<< "${JOBS}"
 elif [[ "${JOBS:-}" =~ ^([0-9]*)$ ]]; then
     JOB_IDS=("${JOBS}")
 else
@@ -139,39 +140,40 @@ for JOB_ID in "${JOB_IDS[@]}"; do
     #
     # Get load for each requested core.
     #
-    cpu_load_snapshot=`clush -w ${node_list} -N "ps -u ${user} -o pcpu= " 2>/dev/null | awk '{ sum+=$1} END {print sum}'`
-    cpu_load_average=`clush -w ${node_list} -N "top -b -u${user} -n1 | fgrep ${user}" 2>/dev/null | awk '{ sum+=$9} END {print sum}'`
+    cpu_load_snapshot=$(clush -w "${node_list}" -N "ps -u ${user} -o pcpu= " 2>/dev/null | awk '{ sum+=$1} END {print sum}')
+    cpu_load_average=$(clush -w "${node_list}" -N "top -b -u${user} -n1 | fgrep ${user}" 2>/dev/null | awk '{ sum+=$9} END {print sum}')
     echo "DEBUG: cpu_load_snapshot = ${cpu_load_snapshot}"
     echo "DEBUG: cpu_load_average = ${cpu_load_average}"
-    if [ "${cpu_load_snapshot}" == '' ]; then
+    if [[ "${cpu_load_snapshot}" == '' ]]; then
       cpu_load_snapshot=0
     fi
-    if [ "${cpu_load_average}" == '' ]; then
+    if [[ "${cpu_load_average}" == '' ]]; then
       cpu_load_average=0
     fi
     
     #
     # Compute job efficiency.
     #
-    efficiency_snapshot=`echo ${cpu_load_snapshot} ${cores} | awk '{ printf("%0.2lf\n", $1/$2); }'`
-    efficiency_average=`echo ${cpu_load_average} ${cores} | awk '{ printf("%0.2lf\n", $1/$2); }'`
+    efficiency_snapshot=$(echo "${cpu_load_snapshot} ${cores}" | awk '{ printf("%0.2lf\n", $1/$2); }')
+    efficiency_average=$(echo "${cpu_load_average} ${cores}" | awk '{ printf("%0.2lf\n", $1/$2); }')
     
     #
     # compute overall number of cores used.
     #
-    effcpu=$(echo ${efficiency_snapshot} ${cores} | awk '{ printf("%0.2lf\n", $1 * $2 / 100); }')
+    effcpu=$(echo "${efficiency_snapshot} ${cores}" | awk '{ printf("%0.2lf\n", $1 * $2 / 100); }')
     
     #
     # Display job stats.
     #
-    if [ $(echo "${efficiency_average} < 80" | bc -l) == 0 ]; then
+    efficiency_to_low="$(echo "${efficiency_average} < 80" | bc -l)"
+    if [[ "${efficiency_to_low}" == 0 ]]; then
         #
         # Job load inefficiently low.
         #
-        echo "${JOB_ID} ${user} ${efficiency_average} $effcpu ${cores}" | awk '{ printf("%c[0;31m%-8s  %-8s   = %-6s%%  (%s of %s)\n%c[0m", 27, $1, $2, $3, $4, $5, 27); }'
+        echo "${JOB_ID} ${user} ${efficiency_average} ${effcpu} ${cores}" | awk '{ printf("%c[0;31m%-8s  %-8s   = %-6s%%  (%s of %s)\n%c[0m", 27, $1, $2, $3, $4, $5, 27); }'
     else
         #echo "${JOB_ID} ${user} ${efficiency_average} $effcpu ${cores}" | awk '{ printf("%-8s  %-8s   = %-6s%%  (%s of %s)\n", $1, $2, $3, $4, $5); }'
-        printf "%-8s  %-8s   = %-6s%%  (%s of %s)\n" ${JOB_ID} ${user} ${efficiency_average} $effcpu ${cores}
+        printf "%-8s  %-8s   = %-6s%%  (%s of %s)\n" "${JOB_ID}" "${user}" "${efficiency_average}" "${effcpu}" "${cores}"
     fi
 done
 

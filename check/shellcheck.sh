@@ -93,8 +93,13 @@ IFS=$'\n' read -r -d '' -a shellscripts < <(find "${MYDIR}"/../bin/ -type f -exe
 	| sed 's/: .*shell.*//' \
 	&& printf '\0')
 for shellscript in "${shellscripts[@]}"; do
-	shellcheck -a -x -o all -f "${format}" "${shellscript}" | sed "s|${MYDIR}/../||g" || status="${?}"
-	if [[ "${status:-0}" -ge 2 ]]; then
-		exit "${status}"
+	if [[ "${shellscript}" =~ hpc-environment ]]
+	then
+		echo "WARN: Skipping ${shellscript}, which is excluded from ShellCheck for now."
+	else
+		shellcheck -a -x -o all -f "${format}" "${shellscript}" | sed "s|${MYDIR}/../||g" || status="${?}"
 	fi
 done
+if [[ "${status:-0}" -ne 0 ]]; then
+	exit "${status}"
+fi
