@@ -32,7 +32,6 @@ fi
 # which allows us to loop over multiple LDAP domains.
 #
 declare ldap_config_file='/etc/openldap/readonly-ldapsearch-credentials.bash'
-declare ldap_user_expiration_regex='^([0-9]{4})([0-9]{2})([0-9]{2}).+Z$'
 
 #
 ##
@@ -91,6 +90,7 @@ function _GetLoginExpirationTimes() {
 				local _bind_pw="${domain_configs[${_ldap}_bind_pw]}"
 				local _user_object_class="${domain_configs[${_ldap}_user_object_class]}"
 				local _user_expiration_date="${domain_configs[${_ldap}_user_expiration_date]}"
+				local _user_expiration_regex="${domain_configs[${_ldap}_user_expiration_regex]}"
 				_query_result=$(ldapsearch -LLL -o ldif-wrap=no \
 						-H "${_uri}" \
 						-D "${_bind_dn}" \
@@ -102,7 +102,7 @@ function _GetLoginExpirationTimes() {
 					| sed "s/${_user_expiration_date}: //"
 				)
 				while read -r _line; do
-					if [[ "${_line}" =~ ${ldap_user_expiration_regex} ]]; then
+					if [[ "${_line}" =~ ${_user_expiration_regex} ]]; then
 						users["${_user}"]="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
 						continue 3
 					fi
