@@ -94,7 +94,7 @@ IFS=$'\n' read -r -d '' -a shellscripts < <(find "${MYDIR}"/../bin/ -type f -exe
 	&& printf '\0')
 for shellscript in "${shellscripts[@]}"; do
 	shellcheck -a -x -o all -f "${format}" "${shellscript}" | sed "s|${MYDIR}/../||g" || status="${?}"
-	if [[ "${status:-0}" -ge 2 ]]; then
+	if [[ "${status:-0}" -ne 0 ]]; then
 		exit "${status}"
 	fi
 done
