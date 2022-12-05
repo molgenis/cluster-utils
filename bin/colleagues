@@ -307,6 +307,7 @@ fi
 # Parse LDAP config file.
 #
 if [[ -e  "${ldap_config_file}" ]]; then
+	# shellcheck source=/dev/null.
 	source "${ldap_config_file}"
 else
 	echo "FATAL: ${ldap_config_file} is required for this version of ${memyselfandi}, but does not exist on this machine."
