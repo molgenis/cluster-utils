@@ -116,27 +116,17 @@ function _GetLoginExpirationTimes() {
 }
 
 #
-# Sorts user hashmap on date.
+# Sort users on account expiration date.
 #
 function _SortGroupMembersByDate() {
 	declare -a _accounts=("${@}")
-	declare -A _hashmap
-	#
-	# Get login expiration dates from global ${users[@]} hash
-	# and store in temporary hash ${_hashmap[@]} for sorting.
-	#
-	for _account in "${_accounts[@]}"; do
-		_hashmap["${_account}"]="${users[${_account}]}"
-	done
-	#
-	# Sort hashMap and store sorted users in array ${sorted_keys[@]}.
-	#
-	readarray -t group_members_sorted_by_exp_date < <(
-		for _user in "${!_hashmap[@]}"; do
-			printf '%s:%s\n' "${_user}" "${_hashmap[${_user}]}"
-		done | sort -t ':' -k 2V | sed 's/:.*//'
+	local _sorted
+	_sorted=$(\
+		for _account in "${_accounts[@]}"; do \
+			printf '%s:%s\n' "${_account}" "${users[${_account}]}"; \
+		done | sort -t ':' -k 2V | sed 's/:.*//'\
 	)
-	unset IFS; set +f
+	readarray -t group_members_sorted_by_exp_date <<< "${_sorted}"
 }
 
 function _PrintGroupInfo() {
@@ -179,7 +169,7 @@ function _PrintUserInfo() {
 	local _login_expiration_time="${users["${_user}"]:-NA}"
 	local _gecos
 	local _getent_result
-	if [[ ${_user} == 'MIA' || ${_user} == 'NA' ]]; then
+	if [[ "${_user}" == 'MIA' || "${_user}" == 'NA' ]]; then
 		_user='MIA'
 		if [[ "${plain_text}" -eq 1 ]]; then
 			_gecos='Missing In Action.'
@@ -283,7 +273,7 @@ if [[ -z "${group:-}" ]]; then
 	id_result="$(id -Gn | tr ' ' '\n' | sort | tr '\n' ' ')"
 	IFS=' ' read -r -a groups <<< "${id_result}"
 else
-	if [[ ${group} == 'all' ]]; then
+	if [[ "${group}" == 'all' ]]; then
 		#
 		# List all groups with group folders on this server.
 		#
