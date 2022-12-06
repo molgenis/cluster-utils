@@ -719,7 +719,7 @@ id_result="$(id -Gn \
   | sed "s/ ${DEPLOY_ADMIN_GROUP}//" \
   | tr ' ' '\n' \
   | sort )"
-IFS=' ' read -r -a MY_GROUPS <<< "${id_result}"
+readarray -t MY_GROUPS <<< "${id_result}"
 
 #
 # Choose customised quota binary and associated first column length.
