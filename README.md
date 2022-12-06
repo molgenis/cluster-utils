@@ -1,6 +1,10 @@
 # cluster-utils
 Collection of utilities / helper scripts to make life easier on our HPC clusters.
 
+##### _master_ branch CI status
+
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/molgenis/cluster-utils/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/molgenis/cluster-utils/tree/master)
+
 ## 1. List of tools.
 
 ### AAI tools.
