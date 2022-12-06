@@ -714,7 +714,11 @@ declare -a SUB_GROUPS=('umcg-gonl-rar1' 'umcg-gonl-rar2' 'umcg-gonl-rar3' 'umcg-
 #  * Remove a (private) group with the same name as MY_USER from the list if present.
 #  * Remove DEPLOY_ADMIN_GROUP is present.
 #
-id_result="$(id -Gn | sed "s/${MY_USER} //" | sed "s/ ${DEPLOY_ADMIN_GROUP}//")"
+id_result="$(id -Gn \
+  | sed "s/${MY_USER} //" \
+  | sed "s/ ${DEPLOY_ADMIN_GROUP}//" \
+  | tr ' ' '\n' \
+  | sort )"
 IFS=' ' read -r -a MY_GROUPS <<< "${id_result}"
 
 #
