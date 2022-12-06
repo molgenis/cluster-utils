@@ -288,6 +288,7 @@ function getGroupQuota() {
         continue
       fi
     else
+      local _LFS
       #
       # Regular groups only use /groups/... LFS-ses.
       #
@@ -296,7 +297,6 @@ function getGroupQuota() {
       #  # We are dealing with sub group.
       #  local _main_group="${BASH_REMATCH[1]}"
       #  local _sub_group="${BASH_REMATCH[2]}"
-      #  local _LFS
       #  if [[ -e "${_FS}/groups/${_main_group}" ]]; then
       #    #
       #    # We have a group's LFS folder on a complete FS.
@@ -339,9 +339,10 @@ function getGroupQuota() {
       if [[ -e "${_FS}/groups/${_group}" ]]; then
         # We are dealing with a main group on a complete FS.
         _FS=$(find "${_FS}/groups/${_group}" -mindepth 1 -maxdepth 1 -type d)
+        _LFS="${_FS/*\//}"
       elif [[ "${_FS}" == "/groups/${_group}/"* ]]; then
         # We are dealing with a main group on a (bind) mount from a sub folder of a complete File System.
-        local _LFS="${_FS/*\//}"
+        _LFS="${_FS/*\//}"
         _FS_for_report="/groups/${_group}/${_LFS}"
       else
         # This should not happen: we don't know how to fetch quota for this group.
@@ -713,8 +714,12 @@ declare -a SUB_GROUPS=('umcg-gonl-rar1' 'umcg-gonl-rar2' 'umcg-gonl-rar3' 'umcg-
 #  * Remove a (private) group with the same name as MY_USER from the list if present.
 #  * Remove DEPLOY_ADMIN_GROUP is present.
 #
-id_result="$(id -Gn | sed "s/${MY_USER} //" | sed "s/ ${DEPLOY_ADMIN_GROUP}//")"
-IFS=' ' read -r -a MY_GROUPS <<< "${id_result}"
+id_result="$(id -Gn \
+  | sed "s/${MY_USER} //" \
+  | sed "s/ ${DEPLOY_ADMIN_GROUP}//" \
+  | tr ' ' '\n' \
+  | sort )"
+readarray -t MY_GROUPS <<< "${id_result}"
 
 #
 # Choose customised quota binary and associated first column length.
