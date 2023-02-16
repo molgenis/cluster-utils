@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#
+##
+### Wrapper for ps with custom output format.
+##
+#
+ps -e --forest -o 'user:20,pid,ppid,etime,pcpu,pmem,cmd'
