@@ -64,7 +64,7 @@ function _usage() {
 	echo '                        that will be used as the value for the job group/type, which must be part of the job name.'
 	echo '                        E.g. for jobs from a Molgenis Compute pipeline with default job headers for Slurm,'
 	echo '                        the pattern argument must be:'
-	echo "                            -p '.*_(s[0-9]{2}_[^_]*)'"
+	echo "                            -p '.*_(s[0-9]{2}[a-z]*_[^_]*)'"
 	echo
 }
 
