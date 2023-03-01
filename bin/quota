@@ -92,7 +92,7 @@ Details:
    Grace is reported as remaining time when the quota (soft) limit has been exceeded, 
    but the hard limit has not been reached yet and the grace timer has not yet expired.
    
-   Values are always reported with a dot as the decimal seperator (LC_NUMERIC="en_US.UTF-8").
+   Values are always reported with a dot as the decimal separator (LC_NUMERIC="en_US.UTF-8").
 ===============================================================================================================
 
 EOH
@@ -108,15 +108,6 @@ function reportError() {
   local exit_status="${2:-$?}"
   local ERROR_MESSAGE="Unknown error."
   local errorMessage="${3:-"${ERROR_MESSAGE}"}"
-  #
-  # Notify syslog.
-  #
-  #logger ${LOG2STDERR} "${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: FATAL: quota reporting FAILED!"
-  #logger ${LOG2STDERR} "${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Exit code = $exit_status"
-  #logger ${LOG2STDERR} "${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Error message = ${errorMessage}"
-  #
-  # Notify on STDOUT.
-  #
   echo "
 ${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: FATAL: quota reporting FAILED!
 ${HOSTNAME} - ${SCRIPT_NAME}:${PROBLEMATIC_LINE}: Exit code = ${exit_status}
@@ -142,8 +133,11 @@ function getFileSetQuotaForGPFS() {
   # Filesystem type             GB      quota      limit   in_doubt    grace |    files   quota    limit in_doubt    grace  Remarks
   # scratch    FILESET       36517      51200      51200          1     none |  1048947       0        0      301     none target02.local
   #
-  local _group="$1"
+  local _group="${1}"
   local _fs_name="${_group}" # fileset_name used for mmlsquota commandline tool
+  shift 1
+  declare -a _file_systems=("${@}")
+  local _fs
   local _QUOTA='/usr/lpp/mmfs/bin/mmlsquota'
   local _BSIZE='1'
   local _BUNIT='G'
@@ -157,13 +151,13 @@ function getFileSetQuotaForGPFS() {
   local _files_limit=10
   local _files_in_doubt=11
   local _files_grace=12
-  local _LFS=''
+  local _lfs=''
   local _fs_path='' # fileset_path used for reporting to users.
   
-  awk '$3 == "gpfs" {print $1}' /proc/mounts | sort | while IFS= read -r _FILESYS; do
-    _FILESYS="${_FILESYS/\/dev\//}"
-    if [[ ${_FILESYS} == 'gpfs2' ]]; then
-      _LFS='tmp02'
+  for _fs in "${_file_systems[@]+"${_file_systems[@]}"}"; do
+    _fs="${_fs/\/dev\//}"
+    if [[ ${_fs} == 'gpfs2' ]]; then
+      _lfs='tmp02'
     else 
       reportError "${LINENO}" "${?}" 'Unknown GPFS detected. Request admin to update quota reporting!'
       #
@@ -171,12 +165,12 @@ function getFileSetQuotaForGPFS() {
       #
     fi
     if [[ "${_group}" == "${DEPLOY_ADMIN_GROUP}" ]]; then
-      _fs_path="/.envsync/${_LFS}"
+      _fs_path="/.envsync/${_lfs}"
     else
-      _fs_path="/groups/${_group}/${_LFS}"
+      _fs_path="/groups/${_group}/${_lfs}"
     fi
     local _fileset_quota
-    _fileset_quota="$("${_QUOTA}" -j "${_fs_name}" "${_FILESYS}" --block-size "${_BSIZE}${_BUNIT}" 2> /dev/null | tail -n 1)" \
+    _fileset_quota="$("${_QUOTA}" -j "${_fs_name}" "${_fs}" --block-size "${_BSIZE}${_BUNIT}" 2> /dev/null | tail -n 1)" \
         || reportError "${LINENO}" "${?}"
     IFS=' ' read -r -a _body_values <<< "${_fileset_quota}" || reportError "${LINENO}" "${?}"
     if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 14 ]]; then
@@ -212,15 +206,21 @@ function getFileSetQuotaForGPFS() {
 function getGroupQuota() {
   local _group="${1}"
   local _fs_type="${2}"
+  shift 2
+  declare -a _file_systems=("${@}")
+  local _fs
   #
   # Loop over mounts and look for Logical File Systems (LFS-ses).
   #
-  awk -v _fs_type="${_fs_type}" '$3 == _fs_type {print $2}' /proc/mounts | sort | while IFS= read -r _FS; do
+  #echo "DEBUG: _group = ${_group} and _fs_type = ${_fs_type}"
+  for _fs in "${_file_systems[@]+"${_file_systems[@]}"}"; do
     #
     # Initialize defaults.
     #
-    local _FS_for_report='NA'
+    local _fs_for_report='NA'
     local _quota_type='G'
+    local _lfs
+    #echo "DEBUG found _fs = ${_fs} of type ${_fs_type}."
     #
     # Handle exceptions in paths, group names, etc.
     #
@@ -228,33 +228,33 @@ function getGroupQuota() {
       #
       # Deploy Admins (depad) group uses specific LFS-ses.
       #
-      if [[ "${_FS}" == '/apps'* ]]; then
+      if [[ "${_fs}" == '/apps'* ]]; then
         #
         # We are dealing with a (bind) mount of the shared software environment
         # from a sub folder of a complete File System.
         #
         # shellcheck disable=SC2269
-        _FS="${_FS}"
-      elif [[ "${_FS}" == '/mnt/env'* ]]; then
+        _fs="${_fs}"
+      elif [[ "${_fs}" == '/mnt/env'* ]]; then
         #
         # We are dealing with a (bind) mount of a secondary copy of the shared software environment
         # from a sub folder of a complete File System.
         # E.g. /mnt/env[0-9]+/apps
         #
-        _FS="${_FS}/apps"
-      elif [[ -d "${_FS}/apps" ]]; then
+        _fs="${_fs}/apps"
+      elif [[ -d "${_fs}/apps" ]]; then
         #
         # We are dealing with a complete FS, which contains a primary apps folder.
         # E.g. /mnt/umcgst[0-9]+/apps
         #
-        _FS="${_FS}/apps"
-        echo "DEBUG 3: ${_FS}"
+        _fs="${_fs}/apps"
+        echo "DEBUG 3: ${_fs}"
       else
         #
-        # Look for secondary copies of the primary apps folder on a comple FS.
+        # Look for secondary copies of the primary apps folder on a complete FS.
         #
-        if [[ "${_FS}" == '/mnt/'* ]] && find "${_FS}" -mindepth 2 -maxdepth 2 -type d -path "${_FS}"'/env[0-9]*/apps' | grep -q "."; then
-          _FS=$(find "${_FS}" -mindepth 2 -maxdepth 2 -type d -path "${_FS}"'/env[0-9]*/apps')
+        if [[ "${_fs}" == '/mnt/'* ]] && find "${_fs}" -mindepth 2 -maxdepth 2 -type d -path "${_fs}"'/env[0-9]*/apps' | grep -q "."; then
+          _fs=$(find "${_fs}" -mindepth 2 -maxdepth 2 -type d -path "${_fs}"'/env[0-9]*/apps')
         else
           #
           # We did not find any LFS-ses for the depad group.
@@ -268,19 +268,20 @@ function getGroupQuota() {
       # for their home dir on LFS /home.
       #
       _quota_type='P' # default for home dirs.
-      if [[ -d "${_FS}/home/${_group}" ]]; then
+      _lfs='home'
+      if [[ -d "${_fs}/home/${_group}" ]]; then
         #
         # Found user's home dir on a complete FS.
         # E.g. /mnt/umcgst[0-9]+/home/${MY_USER}
         #
-        _FS="${_FS}/home"
-        _FS_for_report="${_FS}/${_group}"
-      elif [[ "${_FS}" == '/home' && -d "${_FS}/${_group}" ]]; then
+        _fs="${_fs}/home"
+        _fs_for_report="${_fs}/${_group}"
+      elif [[ "${_fs}" == '/home' && -d "${_fs}/${_group}" ]]; then
         #
         # Found user's home dir on a (bind) mount from a sub folder of a complete File System.
         # E.g. /home/${MY_USER}
         #
-        _FS_for_report="${_FS}/${_group}"
+        _fs_for_report="${_fs}/${_group}"
       else
         #
         # We did not find any LFS-ses for a user's private group / home dir.
@@ -288,69 +289,24 @@ function getGroupQuota() {
         continue
       fi
     else
-      local _LFS
       #
       # Regular groups only use /groups/... LFS-ses.
       #
-      #local _regex='([a-z]*-[a-z]*)(-rar[0-9]*)$'
-      #if [[ "${_group}" =~ ${_regex} ]]; then
-      #  # We are dealing with sub group.
-      #  local _main_group="${BASH_REMATCH[1]}"
-      #  local _sub_group="${BASH_REMATCH[2]}"
-      #  if [[ -e "${_FS}/groups/${_main_group}" ]]; then
-      #    #
-      #    # We have a group's LFS folder on a complete FS.
-      #    # E.g. /mnt/umcgst02/groups/umcg-gonl/prm03
-      #    #
-      #    _LFS=$(find "${_FS}/groups/${_main_group}" -mindepth 1 -maxdepth 1 -type d | grep -o '[^/]*$')
-      #    if [[ "${PLAIN_TEXT}" -eq 1 ]]; then
-      #      _FS_for_report="${_FS}/groups/${_group}/${_LFS}"
-      #    else
-      #      _FS_for_report="${_FS}/groups/${_main_group}\e[7m${_sub_group}\e[27m/${_LFS}"
-      #    fi
-      #  elif [[ "${_FS}" == "/groups/${_main_group}/"* ]]; then
-      #    #
-      #    # We have a group's LFS dir on a (bind) mount from a sub folder of a complete File System.
-      #    # E.g. /groups/umcg-gonl/prm03
-      #    #
-      #    _LFS="${_FS/*\//}"
-      #    if [[ "${PLAIN_TEXT}" -eq 1 ]]; then
-      #      _FS_for_report="/groups/${_group}/${_LFS}"
-      #    else
-      #      _FS_for_report="/groups/${_main_group}\e[7m${_sub_group}\e[27m/${_LFS}"
-      #    fi
-      #  else
-      #    #
-      #    # Skip sub group without main group on this FS.
-      #    #
-      #    continue
-      #  fi
-      #  #
-      #  # Compute difference in length between this group and the longest one 
-      #  # to add padding spaces to workaround a printf bug for %b strings with shell escapes.
-      #  #
-      #  local _padding_length=$((${longest_group_length} - ${#_group}))
-      #  if [[ ${_padding_length} -gt 0 ]]; then
-      #    local _padding
-      #    _padding="$(head -c "${_padding_length}" /dev/zero | tr '\0' ' ')"
-      #    _FS_for_report="${_FS_for_report}${_padding}"
-      #  fi
-      #elif [[ -e "${_FS}/groups/${_group}" ]]; then
-      if [[ -e "${_FS}/groups/${_group}" ]]; then
+      if [[ -e "${_fs}/groups/${_group}" ]]; then
         # We are dealing with a main group on a complete FS.
-        _FS=$(find "${_FS}/groups/${_group}" -mindepth 1 -maxdepth 1 -type d)
-        _LFS="${_FS/*\//}"
-      elif [[ "${_FS}" == "/groups/${_group}/"* ]]; then
+        _fs=$(find "${_fs}/groups/${_group}" -mindepth 1 -maxdepth 1 -type d)
+        _lfs="${_fs/*\//}"
+      elif [[ "${_fs}" == "/groups/${_group}/"* ]]; then
         # We are dealing with a main group on a (bind) mount from a sub folder of a complete File System.
-        _LFS="${_FS/*\//}"
-        _FS_for_report="/groups/${_group}/${_LFS}"
+        _lfs="${_fs/*\//}"
+        _fs_for_report="/groups/${_group}/${_lfs}"
       else
         # This should not happen: we don't know how to fetch quota for this group.
         continue
       fi
     fi
-    if [[ "${_FS_for_report}" == 'NA' ]]; then
-      _FS_for_report="${_FS}"
+    if [[ "${_fs_for_report}" == 'NA' ]]; then
+      _fs_for_report="${_fs}"
     fi
     if [[ "${_fs_type}" == 'beegfs' ]]; then
       #
@@ -382,12 +338,13 @@ function getGroupQuota() {
       _fs_quota="$(beegfs-ctl --getquota --csv --gid "${_group}" 2> /dev/null | tail -n 1)"  || reportError "${LINENO}" "${?}"
       IFS=',' read -r -a _body_values  <<< "${_fs_quota}"                                    || reportError "${LINENO}" "${?}"
       if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 6 ]]; then
-        declare -a _quota_values=("${_FS_for_report}" 
+        declare -a _quota_values=("${_fs_for_report}" 
                    "${_body_values[${_offset_size_used}]}"  'NA' "${_body_values[${_offset_size_limit}]}"  'none' 
                    "${_body_values[${_offset_files_used}]}" 'NA' "${_body_values[${_offset_files_limit}]}" 'none')
         printQuota "${_quota_type}" "${_quota_values[@]}"
       else
         echo "ERROR: Cannot parse quota values returned by beegfs-ctl --getquota --csv --gid ${_group}"
+        continue
       fi
     elif [[ "${_fs_type}" == 'lustre' ]]; then
       #
@@ -420,24 +377,29 @@ function getGroupQuota() {
       #
       # Use project quota for this lfs if configured or default to group quota.
       #
-      if [[ -n "${_LFS:-}" && -n "${quota_pid_increments["${_LFS}"]:-}" ]]; then
+      if [[ -n "${_lfs:-}" && -n "${quota_pid_increments["${_lfs}"]:-}" ]]; then
+        #echo "DEBUG: _lfs = ${_lfs} and pid increment = ${quota_pid_increments[${_lfs}]}."
         local _pid
         local _gid
         _gid="$(getent group "${_group}" | awk -F ':' '{printf $3}')"
-        _pid=$((${_gid} + ${quota_pid_increments[${_LFS}]}))
-        _fs_quota="$(lfs quota -q -h -p "${_pid}" "${_FS}" 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+        _pid=$((${_gid} + ${quota_pid_increments[${_lfs}]}))
+        if [[ "${_lfs}" == 'home' ]]; then
+          _fs="${_fs}/${_group}"
+        fi
         _quota_type='F'
+        _fs_quota="$(lfs quota -q -h -p "${_pid}" "${_fs}" 2> /dev/null | grep -A1 "${_fs}" | grep -v 'is using default' | tr -d '\n')" || reportError "${LINENO}" "${?}"
       else
-        _fs_quota="$(lfs quota -q -h -g "${_group}" "${_FS}" 2> /dev/null | grep -A1 "${_FS}" | tr -d '\n')" || reportError "${LINENO}" "${?}"
+        _fs_quota="$(lfs quota -q -h -g "${_group}" "${_fs}" 2> /dev/null | grep -A1 "${_fs}" | grep -v 'is using default' | tr -d '\n')" || reportError "${LINENO}" "${?}"
       fi
       IFS=' ' read -r -a _body_values <<< "${_fs_quota}" || reportError "${LINENO}" "${?}"
       if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 9 ]]; then
-        declare -a _quota_values=("${_FS_for_report}" 
+        declare -a _quota_values=("${_fs_for_report}" 
                    "${_body_values[${_offset_size_used}]}"  "${_body_values[${_offset_size_quota}]}"  "${_body_values[${_offset_size_limit}]}"  "${_body_values[${_offset_size_grace}]}" 
                    "${_body_values[${_offset_files_used}]}" "${_body_values[${_offset_files_quota}]}" "${_body_values[${_offset_files_limit}]}" "${_body_values[${_offset_files_grace}]}")
         printQuota "${_quota_type}" "${_quota_values[@]}"
       else
-        echo "ERROR: Cannot parse quota values returned by lfs quota -q -h -g ${_group} ${_FS}"
+        echo "ERROR: Cannot parse quota values returned by lfs quota -q -h -g ${_group} ${_fs}"
+        continue
       fi
     elif [[ "${_fs_type}" == 'nfs4' ]]; then
       #
@@ -463,7 +425,7 @@ function getGroupQuota() {
       # Filesystem                                                    Type  Inodes   IUsed   IFree IUse% Mounted on
       # gcc-storage001.stor.hpc.local:/ifs/rekencluster/umcgst10/home nfs4 4194304 1875184 2319120   45% /home
       #
-      if [[ ! -e "${_FS_for_report}" ]]; then
+      if [[ ! -e "${_fs_for_report}" ]]; then
         #
         # It's a sub group without it's own specific dir/path: we cannot fetch directory quota for sub groups.
         #
@@ -475,8 +437,8 @@ function getGroupQuota() {
       local _offset_files_limit='2'
       local _directory_bsize_quota
       local _directory_inode_quota
-      _directory_bsize_quota="$(df -T -k "${_FS_for_report}" 2> /dev/null | tail -n 1)" || reportError "${LINENO}" "${?}"
-      _directory_inode_quota="$(df -T -i "${_FS_for_report}" 2> /dev/null | tail -n 1)" || reportError "${LINENO}" "${?}"
+      _directory_bsize_quota="$(df -T -k "${_fs_for_report}" 2> /dev/null | tail -n 1)" || reportError "${LINENO}" "${?}"
+      _directory_inode_quota="$(df -T -i "${_fs_for_report}" 2> /dev/null | tail -n 1)" || reportError "${LINENO}" "${?}"
       IFS=' ' read -r -a _bsize_values <<< "${_directory_bsize_quota}" || reportError "${LINENO}" "${?}"
       IFS=' ' read -r -a _inode_values <<< "${_directory_inode_quota}" || reportError "${LINENO}" "${?}"
       if [[ -n "${_bsize_values[0]:-}" && "${#_bsize_values[@]:-}" -eq 7 && -n "${_inode_values[0]:-}" && "${#_inode_values[@]:-}" -eq 7 ]]; then
@@ -490,20 +452,21 @@ function getGroupQuota() {
         #
         # Check if missing values can be supplemented from a .quotacache file.
         #
-        if [[ -r "${_FS_for_report}.quotacache" ]]; then
-          if grep -q 'soft=' "${_FS_for_report}.quotacache"; then
-            _size_quota=$(grep 'soft=' "${_FS_for_report}.quotacache" | sed 's/soft=//')
+        if [[ -r "${_fs_for_report}.quotacache" ]]; then
+          if grep -q 'soft=' "${_fs_for_report}.quotacache"; then
+            _size_quota=$(grep 'soft=' "${_fs_for_report}.quotacache" | sed 's/soft=//')
           fi
         fi
         #
         # Declare quota values array and display values.
         #
-        declare -a _quota_values=("${_FS_for_report}" 
+        declare -a _quota_values=("${_fs_for_report}" 
                    "${_bsize_values[${_offset_size_used}]}k" "${_size_quota}" "${_bsize_values[${_offset_size_limit}]}k" "${_size_grace}" 
                    "${_inode_values[${_offset_files_used}]}" "${_files_quota}" "${_inode_values[${_offset_files_limit}]}" "${_files_grace}")
         printQuota 'F' "${_quota_values[@]}"
       else
-        echo "ERROR: Cannot parse quota values returned by df -T [-k|-i] ${_FS_for_report}"
+        echo "ERROR: Cannot parse quota values returned by df -T [-k|-i] ${_fs_for_report}"
+        continue
       fi
     else
       echo "ERROR: unsupported file system type: ${_fs_type}."
@@ -871,6 +834,14 @@ else
 fi
 
 #
+# List file systems of certain types.
+#
+readarray -t lustre_file_systems< <(awk -v fs_type=lustre '$3 == fs_type {print $2}' /proc/mounts | sort)
+readarray -t beegfs_file_systems< <(awk -v fs_type=beegfs '$3 == fs_type {print $2}' /proc/mounts | sort)
+readarray -t nfs4_file_systems< <(awk -v fs_type=nfs4 '$3 == fs_type {print $2}' /proc/mounts | sort)
+readarray -t gpfs_file_systems< <(awk -v fs_type=gpfs '$3 == fs_type {print $2}' /proc/mounts | sort)
+
+#
 # Display header.
 #
 quota_report_header_header=$(printf "${format_hh}" '' 'Total size of files and folders' 'Total number of files and folders')
@@ -902,8 +873,6 @@ if [[ -n ${quota_user_report:-} ]]; then
   done
   IFS="${IFS_BAK}"
 fi
-trap 'reportError $LINENO' ERR
-set -e
 
 #
 # Display relevant goofy "user" quota for home dirs.
@@ -916,7 +885,7 @@ do
   #  * for a user's "private group" with a group name that is the same as the user name.
   #  * under control of the Lustre quota tool: lfs quota ....
   #
-  quota_private_group_report=$(set -e; getGroupQuota "${THIS_PRIVATE_GROUP}" 'lustre')
+  quota_private_group_report=$(set -e; getGroupQuota "${THIS_PRIVATE_GROUP}" 'lustre' "${lustre_file_systems[@]+"${lustre_file_systems[@]}"}")
   if [[ -n "${quota_private_group_report:-}" ]]; then
     echo "${SEP_SINGLE}"
     echo "${quota_private_group_report}"
@@ -926,7 +895,7 @@ do
   #  * for a user's "private group" with a group name that is the same as the user name.
   #  * not controlled by normal nor dedicated quota command; values can partially be retrieved using df ....
   #
-  quota_private_group_report=$(set -e; getGroupQuota "${THIS_PRIVATE_GROUP}" 'nfs4')
+  quota_private_group_report=$(set -e; getGroupQuota "${THIS_PRIVATE_GROUP}" 'nfs4' "${nfs4_file_systems[@]+"${nfs4_file_systems[@]}"}")
   if [[ -n "${quota_private_group_report:-}" ]]; then
     echo "${SEP_SINGLE}"
     echo "${quota_private_group_report}"
@@ -944,12 +913,12 @@ done
 #     * or BeeGFS quota tool (beegfs-ctl)
 #     * or no quota tool, but partially retrievable using df for Isilon OneFS.
 #
-for THIS_GROUP in "${QUOTA_GROUPS[@]}"
+for THIS_GROUP in "${QUOTA_GROUPS[@]:-}"
 do
-  quota_group_report_lustre=$(set -e; getGroupQuota "${THIS_GROUP}" 'lustre')
-  quota_group_report_beegfs=$(set -e; getGroupQuota "${THIS_GROUP}" 'beegfs')
-  quota_group_report_onefs=$(set -e; getGroupQuota "${THIS_GROUP}" 'nfs4')
-  quota_fileset_report=$(set -e; getFileSetQuotaForGPFS "${THIS_GROUP}")
+  quota_group_report_lustre=$(set -e; getGroupQuota "${THIS_GROUP}" 'lustre' "${lustre_file_systems[@]+"${lustre_file_systems[@]}"}")
+  quota_group_report_beegfs=$(set -e; getGroupQuota "${THIS_GROUP}" 'beegfs' "${beegfs_file_systems[@]+"${beegfs_file_systems[@]}"}")
+  quota_group_report_onefs=$(set -e; getGroupQuota "${THIS_GROUP}" 'nfs4' "${nfs4_file_systems[@]+"${nfs4_file_systems[@]}"}")
+  quota_fileset_report=$(set -e; getFileSetQuotaForGPFS "${THIS_GROUP}" "${gpfs_file_systems[@]+"${gpfs_file_systems[@]}"}")
   if [[ -n "${quota_group_report_lustre:-}" ||
         -n "${quota_group_report_beegfs:-}" ||
         -n "${quota_group_report_onefs:-}" ||
