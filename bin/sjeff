@@ -64,7 +64,7 @@ function _usage() {
 	echo '                        that will be used as the value for the job group/type, which must be part of the job name.'
 	echo '                        E.g. for jobs from a Molgenis Compute pipeline with default job headers for Slurm,'
 	echo '                        the pattern argument must be:'
-	echo "                            -p '.*_(s[0-9]{2}_[^_]*)'"
+	echo "                            -p '.*_(s[0-9]{2}[a-z]*_[^_]*)'"
 	echo
 }
 
@@ -122,10 +122,10 @@ function _getJobEfficiency() {
 	for _job_id in "${_job_ids[@]}"
 	do
 		local _query_result
-		#echo "DEBUG: Fetching job stats from Slurm DB using sacct for: ${_job_id}" >&2
-		_query_result="$("${SACCT}" -o "${_sacct_format_r}" -p -n -j "${_job_id}" | grep "^${_job_id}[|]")"
+		#echo "DEBUG: Fetching job stats from Slurm DB using sacct for: ${_job_id:-}" >&2
+		_query_result="$("${SACCT}" -o "${_sacct_format_r}" -p -n -j "${_job_id}" | { grep "^${_job_id}[|]" || test "${?}" = 1; } )"
 		IFS='|' read -r -a _job_info_r <<< "${_query_result}"
-		_query_result="$("${SACCT}" -o "${_sacct_format_u}" -p -n -j "${_job_id}" | grep "^${_job_id}[.]" | head -n 1)"
+		_query_result="$("${SACCT}" -o "${_sacct_format_u}" -p -n -j "${_job_id}" | { grep "^${_job_id}[.]" || test "${?}" = 1; } | head -n 1)"
 		IFS='|' read -r -a _job_info_u <<< "${_query_result}"
 		#
 		# Parse sacct results.
@@ -155,12 +155,17 @@ function _getJobEfficiency() {
 				fi
 			fi
 			#
-			# Skip running for which not all info can be fetched from the Slurm accounting DataBase. 
+			# Skip jobs for which not all info can be fetched from the Slurm accounting DataBase.
 			#
-			if [[ ( -z "${_job_info_u[2]:-}" || -z "${_job_info_u[3]:-}" ) && "${_job_info_u[4]:-}" =~ 'RUNNING' ]]
+			if [[ ( -z "${_job_info_u[2]:-}" || -z "${_job_info_u[3]:-}" ) ]]
 			then
-				echo "WARN: Skipping job ${_job_id} with state 'RUNNING'. Use other commands to profile running jobs." >&2
-				continue
+				if [[ "${_job_info_u[4]:-}" =~ 'FAILED' || "${_job_info_u[4]:-}" =~ 'COMPLETED' || "${_job_info_u[4]:-}" =~ 'CANCELLED' ]]
+				then
+					: # no-op
+				else
+					echo "WARN: Skipping job ${_job_id} with state ${_job_info_u[4]:-}. Use other commands to profile jobs that have not finished (yet)." >&2
+					continue
+				fi
 			fi
 			#
 			# Compute efficiency
@@ -223,7 +228,7 @@ function _getJobEfficiency() {
 			_formatted_cpu_e="$(set -e; _formatEfficiency "${_cpu_e}" '90' '100')"
 			_formatted_mem_e="$(set -e; _formatEfficiency "${_mem_e}" '75' '90')"
 		else
-			_job_name="ERROR: Failed to parse sacct output for job ${_job_id}"
+			_job_name="ERROR: Failed to get/parse sacct output for job ${_job_id}"
 			local _walltime_r='?'
 			local _cpu_r='?'
 			local _mem_r='?'
