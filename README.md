@@ -34,13 +34,13 @@ Tools to get reports on authentication & authorization settings and identities.
 Wrapper for Slurm's sacctmgr command with custom output format to list which users are associated to which slurm accounts on which clusters.
 Example output:
 ```
-   Cluster              Account                           User     Share          Def QOS                                   QOS
----------- -------------------- ------------------------------ --------- ---------------- -------------------------------------
-  calculon root                                                        1 priority         [list of QoS account had access to]
-  calculon  root                root                                   1 priority         [list of QoS account had access to]
-  calculon  users                                                      1 regular          [list of QoS account had access to]
-  calculon   users              [1st_user]                             1 regular          [list of QoS account had access to]
-  calculon   users              [2nd_user]                             1 regular          [list of QoS account had access to]
+   Cluster Account              User             Share Def QOS   QOS
+---------- -------------------- ------------ --------- --------- -----------------------------------
+  calculon root                                      1 priority  [list of QoS account had access to]
+  calculon  root                root                 1 priority  [list of QoS account had access to]
+  calculon  users                                    1 regular   [list of QoS account had access to]
+  calculon   users              [1st_user]           1 regular   [list of QoS account had access to]
+  calculon   users              [2nd_user]           1 regular   [list of QoS account had access to]
 etc.
 ```
 
@@ -258,29 +258,27 @@ duo-ds-ll    up     1      idle   2:1:1   2     2                  7872    0    
 Wrapper for Slurm's sacctmgr command with custom output format to list all Quality of Service (QoS) levels and their limits.
 Example output:
 ```
-           Name   Priority UsageFactor                        GrpTRES GrpSubmit GrpJobs                      MaxTRESPU MaxSubmitPU MaxJobsPU       MaxTRES     MaxWall 
---------------- ---------- ----------- ------------------------------ --------- ------- ------------------------------ ----------- --------- ------------- ----------- 
-         normal          0    1.000000                                                                                                                                 
-        regular         10    1.000000                    cpu=0,mem=0     30000                                               5000                                     
-       leftover          0    0.000000                    cpu=0,mem=0     30000                                              10000                                     
-       priority         20    2.000000                    cpu=0,mem=0      5000                                               1000                                     
- leftover-short          0    0.000000                                    30000                                              10000                            06:00:00 
-leftover-medium          0    0.000000                                    30000                                              10000                          1-00:00:00 
-  leftover-long          0    0.000000                                     3000                                               1000                          7-00:00:00 
-  regular-short         10    1.000000                                    30000                                               5000                            06:00:00 
- regular-medium         10    1.000000                                    30000                     cpu=192,mem=942080        5000                          1-00:00:00 
-   regular-long         10    1.000000              cpu=96,mem=471040      3000                      cpu=48,mem=235520        1000                          7-00:00:00 
- priority-short         20    2.000000              cpu=96,mem=471040      5000                                               1000                            06:00:00 
-priority-medium         20    2.000000              cpu=96,mem=471040      2500                      cpu=48,mem=235520         500                          1-00:00:00 
-  priority-long         20    2.000000              cpu=96,mem=471040       250                      cpu=48,mem=235520          50                          7-00:00:00 
-            dev         10    1.000000                    cpu=0,mem=0      5000                                               1000                                     
-      dev-short         10    1.000000                                     5000                      cpu=48,mem=235520        1000                            06:00:00 
-     dev-medium         10    1.000000              cpu=96,mem=471040      2500                      cpu=48,mem=235520         500                          1-00:00:00 
-       dev-long         10    1.000000              cpu=48,mem=235520       250                      cpu=48,mem=235520          50                          7-00:00:00 
-             ds         10    1.000000                    cpu=0,mem=0      5000                                               1000                                     
-       ds-short         10    1.000000                                     5000                         cpu=4,mem=4096        1000                            06:00:00 
-      ds-medium         10    1.000000                 cpu=4,mem=4096      2500                         cpu=2,mem=2048         500                          1-00:00:00 
-        ds-long         10    1.000000                 cpu=4,mem=4096       250                         cpu=1,mem=1024          50                          7-00:00:00 
+QOSLevelName       Priority  UsageFactor  MaxResources                     MaxSubmit    MaxResources                     MaxSubmit  MaxWalltime  CanPreemptJobsInQOSlevel
+                                          PerQOSLevel                      PerQOSLevel  PerUser                          PerUser    PerJob       
+normal             0         1.000000                                                                                                            
+leftover           0         0.000000     cpu=0,gres/gpu=0,mem=0           30000                                         10000                   
+leftover-short     0         0.000000                                      30000                                         10000      06:00:00     
+leftover-medium    0         0.000000                                      30000                                         10000      1-00:00:00   
+leftover-long      0         0.000000                                      3000                                          1000       7-00:00:00   
+regular            10        1.000000     cpu=0,gres/gpu=0,mem=0           30000                                         5000                    
+regular-short      10        1.000000                                      30000                                         5000       06:00:00     leftover-long,leftover-medium,leftover-short
+regular-medium     10        1.000000     cpu=139,gres/gpu=13,mem=535660M  30000        cpu=104,gres/gpu=10,mem=401745M  5000       1-00:00:00   leftover-long,leftover-medium,leftover-short
+regular-long       10        1.000000     cpu=87,gres/gpu=8,mem=334788M    3000         cpu=69,gres/gpu=7,mem=267830M    1000       7-00:00:00   leftover-long,leftover-medium,leftover-short
+priority           20        2.000000     cpu=0,gres/gpu=0,mem=0           5000                                          1000                    
+priority-short     20        2.000000                                      5000         cpu=52,gres/gpu=5,mem=200872M    1000       06:00:00     leftover-long,leftover-medium,leftover-short
+priority-medium    20        2.000000     cpu=104,gres/gpu=10,mem=401745M  2500         cpu=34,gres/gpu=4,mem=133915M    500        1-00:00:00   leftover-long,leftover-medium,leftover-short
+priority-long      20        2.000000     cpu=52,gres/gpu=5,mem=200872M    250          cpu=34,gres/gpu=4,mem=133915M    50         7-00:00:00   leftover-long,leftover-medium,leftover-short
+interactive        30        1.000000     cpu=0,gres/gpu=0,mem=0                                                         1                       
+interactive-short  30        1.000000                                                   cpu=15,gres/gpu=4,mem=46869M     1          06:00:00     leftover-long,leftover-medium,leftover-short,regular-short
+ds                 10        1.000000     cpu=0,gres/gpu=0,mem=0           5000                                          1000                    
+ds-short           10        1.000000                                      5000         cpu=4,gres/gpu=0,mem=4G          1000       06:00:00     
+ds-medium          10        1.000000     cpu=2,gres/gpu=0,mem=2G          2500         cpu=2,gres/gpu=0,mem=2G          500        1-00:00:00   
+ds-long            10        1.000000     cpu=1,gres/gpu=0,mem=1G          250          cpu=1,gres/gpu=0,mem=1G          50         7-00:00:00   
 ```
 
 #### <a name="cqueue"/> cqueue
