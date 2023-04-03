@@ -15,6 +15,7 @@ Tools to get reports on authentication & authorization settings and identities.
 
 ### Tools for monitoring cluster/job status
 - [ctop](#-ctop): Top-like overview of cluster status and resource usage.
+- [cps](#-cps): List all processes on a machine in a tree-like hierarchy.
 - [sjeff](#-sjeff): Lists Slurm Job EFFiciency for jobs.
 - [cnodes](#-cnodes): Lists state of compute nodes.
 - [cqos](#-cqos): Lists details for all Quality of Service levels.
@@ -153,6 +154,53 @@ Node States: 3 IDLE | 1 IDLE+DRAIN | 7 MIXED
   Y = 606874 [account]    regular-short   kallisto35                               R    1719   2500     23.7     40.0 0-00:24:32 0-05:59:00
   B = 606876 [account]    regular-short   kallisto37                               R    1685   2500     22.3     40.0 0-00:23:01 0-05:59:00
   L = 606877 [account]    regular-short   kallisto38                               R    1165   2500     22.3     40.0 0-00:13:33 0-05:59:00
+```
+
+#### <a name="cps"/> cps
+
+A wrapper for the regular `ps` command to change the default output/formatting.
+Lists all processes on a machine in a tree-like hierarchy and how much time, the percentage of CPU and the percentage of memory each process consumes.
+Example output:
+
+```
+USER          PID    PPID     ELAPSED %CPU %MEM CMD
+demo-user     20112     1    03:45:10  0.0  0.0 SCREEN -S tool_test
+demo-user     20113 20112    03:45:10  0.0  0.0  \_ /bin/bash
+demo-user     26873 20113       14:01  0.0  0.0      \_ bash test_fastq.sh
+demo-user     26893 26873       14:01  0.0  0.0          \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/tool.sh --workflow fastq --config /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/custom.cfg
+demo-user     26910 26893       14:01  0.0  0.0              \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/tool.sh --workflow fastq --config /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/custom.cfg
+demo-user     26911 26910       14:01  8.6  0.6                  \_ /usr/bin/java --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED
+demo-user      3248 26911       10:45  0.0  0.0                      \_ /bin/bash -ue .command.run
+demo-user      3305  3248       10:45  0.0  0.0                      |   \_ tee .command.out
+demo-user      3306  3248       10:45  0.0  0.0                      |   \_ tee .command.err
+demo-user      3307  3248       10:45  0.0  0.0                      |   \_ /bin/bash -ue .command.run
+demo-user      3308  3307       10:45  0.0  0.0                      |       \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/19/3e5f75e/.command.run nxf_trace
+demo-user      3379  3308       10:45  0.0  0.0                      |           \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/19/3e5f75e/.command.sh
+demo-user      9750  3379       10:15  0.0  0.0                      |           |   \_ Apptainer runtime parent
+demo-user      9772  9750       10:15  1.1  0.0                      |           |       \_ /usr/bin/python3 /usr/local/bin/sniffles --input tool_tool_fam0_HG002_sliced.cram
+demo-user      9816  9772       10:12  0.0  0.0                      |           |           \_ /usr/bin/python3 /usr/local/bin/sniffles --input tool_tool_fam0_HG002_sliced.cram
+demo-user      9817  9772       10:12  0.0  0.0                      |           |           \_ /usr/bin/python3 /usr/local/bin/sniffles --input tool_tool_fam0_HG002_sliced.cram
+demo-user      9818  9772       10:12  0.3  0.0                      |           |           \_ /usr/bin/python3 /usr/local/bin/sniffles --input tool_tool_fam0_HG002_sliced.cram
+demo-user      9819  9772       10:12  0.3  0.0                      |           |           \_ /usr/bin/python3 /usr/local/bin/sniffles --input tool_tool_fam0_HG002_sliced.cram
+demo-user      3382  3308       10:45  0.8  0.0                      |           \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/19/3e5f75e/.command.run nxf_trace
+demo-user      3696 26911       00:41  0.0  0.0                      \_ /bin/bash -ue .command.run
+demo-user      3719  3696       00:41  0.0  0.0                          \_ tee .command.out
+demo-user      3720  3696       00:41  0.0  0.0                          \_ tee .command.err
+demo-user      3721  3696       00:41  0.0  0.0                          \_ /bin/bash -ue .command.run
+demo-user      3722  3721       00:41  0.0  0.0                              \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/51/c0ea14b/.command.run nxf_trace
+demo-user      3740  3722       00:41  0.0  0.0                                  \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/51/c0ea14b/.command.sh
+demo-user      6022  3740       00:32  0.2  0.0                                  |   \_ Apptainer runtime parent
+demo-user      6040  6022       00:32  0.2  0.0                                  |       \_ bash /opt/bin/run_clair3.sh --bam_fn=tool_tool_fam0_HG002.cram.bam --ref_fn=/groups/umcg-gcc/rsc01/tool/resources/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+demo-user      6098  6040       00:32  0.0  0.0                                  |           \_ bash /opt/bin/run_clair3.sh --bam_fn=tool_tool_fam0_HG002.cram.bam --ref_fn=/groups/umcg-gcc/rsc01/tool/resources/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+demo-user      6100  6098       00:32  0.0  0.0                                  |           |   \_ bash /opt/bin/run_clair3.sh --bam_fn=tool_tool_fam0_HG002.cram.bam --ref_fn=/groups/umcg-gcc/rsc01/tool/resources/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+demo-user      6106  6100       00:32  0.0  0.0                                  |           |       \_ /bin/bash /opt/bin/scripts/clair3_c_impl.sh --bam_fn /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/51/c0ea14b/tool_tool_fam0_HG002.cram
+demo-user      7009  6106       00:30  0.7  0.0                                  |           |           \_ perl /opt/conda/envs/clair3/bin/parallel --retries 4 -C --joblog /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/51/c0ea14b/log/
+demo-user     15204  7009       00:07 87.4  0.1                                  |           |           |   \_ python3 /opt/bin/scripts/../clair3.py CallVariantsFromCffi --chkpnt_fn /opt/models/r941_prom_sup_g5014/pileup
+demo-user     16536  7009       00:03 69.3  0.0                                  |           |           |   \_ python3 /opt/bin/scripts/../clair3.py CallVariantsFromCffi --chkpnt_fn /opt/models/r941_prom_sup_g5014/pileup
+demo-user     16814  7009       00:01 79.0  0.0                                  |           |           |   \_ python3 /opt/bin/scripts/../clair3.py CallVariantsFromCffi --chkpnt_fn /opt/models/r941_prom_sup_g5014/pileup
+demo-user      7015  6106       00:30  0.0  0.0                                  |           |           \_ tee /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/51/c0ea14b/log/1_call_var_bam_pileup.log
+demo-user      6099  6040       00:32  0.0  0.0                                  |           \_ tee /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/51/c0ea14b/run_clair3.log
+demo-user      3742  3722       00:41  1.7  0.0                                  \_ /bin/bash /groups/umcg-gcc/tmp01/demo-user/tool/test/output/fastq_nanopore/.nxf.work/51/c0ea14b/.command.run nxf_trace
 ```
 
 #### <a name="sjeff"/> sjeff
