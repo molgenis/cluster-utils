@@ -5,4 +5,8 @@
 ### Wrapper for sacctmgr with custom output format.
 ##
 #
-sacctmgr show qos format="Name%15,Priority,UsageFactor,GrpTRES%30,GrpSubmit,GrpJobs,MaxTRESPerUser%30,MaxSubmitJobsPerUser,MaxJobsPerUser,MaxTRESPerJob,MaxWallDurationPerJob"
+cat \
+    <(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' QOSLevelName Priority UsageFactor MaxResources MaxSubmit   MaxResources MaxSubmit MaxWalltime CanPreemptJobsInQOSlevel) \
+    <(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' ''           ''       ''          PerQOSLevel  PerQOSLevel PerUser      PerUser   PerJob      '') \
+    <(sacctmgr -P -n show qos format='Name,Priority,UsageFactor,GrpTRES,GrpSubmit,MaxTRESPerUser,MaxSubmitJobsPerUser,MaxWallDurationPerJob,Preempt') \
+    | column -t -s '|'
