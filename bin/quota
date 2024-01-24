@@ -173,7 +173,7 @@ function getFileSetQuotaForGPFS() {
     _fileset_quota="$("${_QUOTA}" -j "${_fs_name}" "${_fs}" --block-size "${_BSIZE}${_BUNIT}" 2> /dev/null | tail -n 1)" \
         || reportError "${LINENO}" "${?}"
     IFS=' ' read -r -a _body_values <<< "${_fileset_quota}" || reportError "${LINENO}" "${?}"
-    if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 14 ]]; then
+    if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]}" -eq 14 ]]; then
       #
       # Reformat GiB -> TiB if BUNIT was 'G'.
       #
@@ -337,7 +337,7 @@ function getGroupQuota() {
       local _fs_quota
       _fs_quota="$(beegfs-ctl --getquota --csv --gid "${_group}" 2> /dev/null | tail -n 1)"  || reportError "${LINENO}" "${?}"
       IFS=',' read -r -a _body_values  <<< "${_fs_quota}"                                    || reportError "${LINENO}" "${?}"
-      if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 6 ]]; then
+      if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]}" -eq 6 ]]; then
         declare -a _quota_values=("${_fs_for_report}" 
                    "${_body_values[${_offset_size_used}]}"  'NA' "${_body_values[${_offset_size_limit}]}"  'none' 
                    "${_body_values[${_offset_files_used}]}" 'NA' "${_body_values[${_offset_files_limit}]}" 'none')
@@ -392,7 +392,7 @@ function getGroupQuota() {
         _fs_quota="$(lfs quota -q -h -g "${_group}" "${_fs}" 2> /dev/null | grep -A1 "${_fs}" | grep -v 'is using default' | tr -d '\n')" || reportError "${LINENO}" "${?}"
       fi
       IFS=' ' read -r -a _body_values <<< "${_fs_quota}" || reportError "${LINENO}" "${?}"
-      if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]:-}" -eq 9 ]]; then
+      if [[ -n "${_body_values[0]:-}" && "${#_body_values[@]}" -eq 9 ]]; then
         declare -a _quota_values=("${_fs_for_report}" 
                    "${_body_values[${_offset_size_used}]}"  "${_body_values[${_offset_size_quota}]}"  "${_body_values[${_offset_size_limit}]}"  "${_body_values[${_offset_size_grace}]}" 
                    "${_body_values[${_offset_files_used}]}" "${_body_values[${_offset_files_quota}]}" "${_body_values[${_offset_files_limit}]}" "${_body_values[${_offset_files_grace}]}")
@@ -441,7 +441,7 @@ function getGroupQuota() {
       _directory_inode_quota="$(df -T -i "${_fs_for_report}" 2> /dev/null | tail -n 1)" || reportError "${LINENO}" "${?}"
       IFS=' ' read -r -a _bsize_values <<< "${_directory_bsize_quota}" || reportError "${LINENO}" "${?}"
       IFS=' ' read -r -a _inode_values <<< "${_directory_inode_quota}" || reportError "${LINENO}" "${?}"
-      if [[ -n "${_bsize_values[0]:-}" && "${#_bsize_values[@]:-}" -eq 7 && -n "${_inode_values[0]:-}" && "${#_inode_values[@]:-}" -eq 7 ]]; then
+      if [[ -n "${_bsize_values[0]:-}" && "${#_bsize_values[@]}" -eq 7 && -n "${_inode_values[0]:-}" && "${#_inode_values[@]}" -eq 7 ]]; then
         #
         # Define default values not reported by df.
         #
