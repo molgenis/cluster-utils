@@ -213,6 +213,7 @@ function getGroupQuota() {
   # Loop over mounts and look for Logical File Systems (LFS-ses).
   #
   #echo "DEBUG: _group = ${_group} and _fs_type = ${_fs_type}"
+  #echo "DEBUG: _file_systems = ${_file_systems[@]:-}"
   for _fs in "${_file_systems[@]+"${_file_systems[@]}"}"; do
     #
     # Initialize defaults.
@@ -220,7 +221,7 @@ function getGroupQuota() {
     local _fs_for_report='NA'
     local _quota_type='G'
     local _lfs
-    #echo "DEBUG found _fs = ${_fs} of type ${_fs_type}."
+    #echo "DEBUG: processing _fs = ${_fs} of type ${_fs_type}."
     #
     # Handle exceptions in paths, group names, etc.
     #
@@ -248,7 +249,7 @@ function getGroupQuota() {
         # E.g. /mnt/umcgst[0-9]+/apps
         #
         _fs="${_fs}/apps"
-        echo "DEBUG 3: ${_fs}"
+        #echo "DEBUG: ${_fs}"
       else
         #
         # Look for secondary copies of the primary apps folder on a complete FS.
@@ -292,18 +293,19 @@ function getGroupQuota() {
       #
       # Regular groups only use /groups/... LFS-ses.
       #
-      if [[ -e "${_fs}/groups/${_group}" ]]; then
-        # We are dealing with a main group on a complete FS.
-        _fs=$(find "${_fs}/groups/${_group}" -mindepth 1 -maxdepth 1 -type d)
-        _lfs="${_fs/*\//}"
-      elif [[ "${_fs}" == "/groups/${_group}/"* ]]; then
+      if [[ "${_fs}" == "/groups/${_group}/"* ]]; then
         # We are dealing with a main group on a (bind) mount from a sub folder of a complete File System.
         _lfs="${_fs/*\//}"
         _fs_for_report="/groups/${_group}/${_lfs}"
+      elif [[ -e "${_fs}/groups/${_group}" ]]; then
+        # We are dealing with a main group on a complete FS.
+        _fs=$(find "${_fs}/groups/${_group}" -mindepth 1 -maxdepth 1 -type d)
+        _lfs="${_fs/*\//}"
       else
         # This should not happen: we don't know how to fetch quota for this group.
         continue
       fi
+      #echo "DEBUG _fs ${_fs} | _lfs ${_lfs} | _fs_for_report ${_fs_for_report}"
     fi
     if [[ "${_fs_for_report}" == 'NA' ]]; then
       _fs_for_report="${_fs}"
@@ -377,17 +379,26 @@ function getGroupQuota() {
       #
       # Use project quota for this lfs if configured or default to group quota.
       #
-      if [[ -n "${_lfs:-}" && -n "${quota_pid_increments["${_lfs}"]:-}" ]]; then
-        #echo "DEBUG: _lfs = ${_lfs} and pid increment = ${quota_pid_increments[${_lfs}]}."
-        local _pid
-        local _gid
-        _gid="$(getent group "${_group}" | awk -F ':' '{printf $3}')"
-        _pid=$((${_gid} + ${quota_pid_increments[${_lfs}]}))
-        if [[ "${_lfs}" == 'home' ]]; then
-          _fs="${_fs}/${_group}"
+      #echo "DEBUG: checking for ${_fs_for_report}/.quotacache"
+      if [[ -e "${_fs_for_report}/.quotacache" ]]; then
+        if [[ -r "${_fs_for_report}/.quotacache" ]]; then
+          local _pid
+          if grep -q 'project_id=' "${_fs_for_report}/.quotacache"; then
+            _pid=$(grep 'project_id=' "${_fs_for_report}/.quotacache" | sed 's/project_id=//')
+            #echo "DEBUG: _lfs = ${_lfs} and _pid = ${_pid}."
+            if [[ "${_lfs}" == 'home' ]]; then
+              _fs="${_fs}/${_group}"
+            fi
+            _quota_type='F'
+            _fs_quota="$(lfs quota -q -h -p "${_pid}" "${_fs}" 2> /dev/null | grep -A1 "${_fs}" | grep -v 'is using default' | tr -d '\n')" || reportError "${LINENO}" "${?}"
+          else
+            echo "ERROR: Cannot parse project_id from ${_fs_for_report}/.quotacache"
+            continue
+          fi
+        else
+          echo "ERROR: Cannot read ${_fs_for_report}/.quotacache"
+          continue
         fi
-        _quota_type='F'
-        _fs_quota="$(lfs quota -q -h -p "${_pid}" "${_fs}" 2> /dev/null | grep -A1 "${_fs}" | grep -v 'is using default' | tr -d '\n')" || reportError "${LINENO}" "${?}"
       else
         _fs_quota="$(lfs quota -q -h -g "${_group}" "${_fs}" 2> /dev/null | grep -A1 "${_fs}" | grep -v 'is using default' | tr -d '\n')" || reportError "${LINENO}" "${?}"
       fi
@@ -452,9 +463,9 @@ function getGroupQuota() {
         #
         # Check if missing values can be supplemented from a .quotacache file.
         #
-        if [[ -r "${_fs_for_report}.quotacache" ]]; then
-          if grep -q 'soft=' "${_fs_for_report}.quotacache"; then
-            _size_quota=$(grep 'soft=' "${_fs_for_report}.quotacache" | sed 's/soft=//')
+        if [[ -r "${_fs_for_report}/.quotacache" ]]; then
+          if grep -q 'size_soft_limit=' "${_fs_for_report}/.quotacache"; then
+            _size_quota="$(grep 'size_soft_limit=' "${_fs_for_report}/.quotacache" | sed 's/size_soft_limit=//')G"
           fi
         fi
         #
@@ -532,6 +543,7 @@ function printQuota() {
   local _quota_type="${1}"
   shift
   declare -a _quota_values=("${@}")
+  #echo "DEBUG _quota_values[0]: ${_quota_values[0]}"
   #
   # Check and append status.
   #
@@ -741,15 +753,6 @@ if [[ "${ALL_GROUPS}" -eq 1 ]]; then
   if [[ "${MY_USER}" != 'root' ]]; then
     reportError "${LINENO}" 1 "Requesting quota info for all groups/users is only available to root and you are ${MY_USER}."
   fi
-fi
-
-#
-# Check if we have /etc/quota.conf file with custom settings and source it if available.
-#
-declare -A quota_pid_increments=()  # default.
-if [[ -e /etc/quota.conf ]]; then
-  # shellcheck disable=SC1091
-  source /etc/quota.conf
 fi
 
 #
