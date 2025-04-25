@@ -130,7 +130,7 @@ function _getJobEfficiency() {
 		#
 		# Parse sacct results.
 		#
-		if [[ "${#_job_info_r[@]:0}" -ge 1 && "${#_job_info_u[@]:0}" -ge 1 ]]
+		if [[ "${#_job_info_r[@]}" -ge 1 && "${#_job_info_u[@]}" -ge 1 ]]
 		then
 			#echo "DEBUG:     ${_job_info_r[@]} ${_job_info_u[@]}"
 			if [[ -z "${_job_info_r[1]:-}" ]]
