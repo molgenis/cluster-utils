@@ -126,10 +126,18 @@ my %known_job_states=(
 				name => 'RUNNING',
 				consumes_resources => 1,
 				desc => 'Job is currently crunching data and consumes allocates resources.'},
+	'RH'  => {
+				name => 'REQUEUE_HOLD',
+				consumes_resources => 0,
+				desc => 'Job is being held after it was requeued.'},
 	'RS'  => {
 				name => 'RESIZING',
 				consumes_resources => 0,
 				desc => 'Job is about to change size.'},
+	'SI'  => {
+				name => 'SIGNALING',
+				consumes_resources => 1,
+				desc => 'Job is being signaled.'},
 	'SE'  => {
 				name => 'SPECIAL_EXIT',
 				consumes_resources => 0,
@@ -159,8 +167,10 @@ my %known_job_states_long_to_short=(
 	'NODE_FAIL'    => 'NF',
 	'PENDING'      => 'PD',
 	'PREEMPTED'    => 'PR',
-	'RUNNING'      => 'R',
+	'REQUEUE_HOLD' => 'RH',
 	'RESIZING'     => 'RS',
+	'RUNNING'      => 'R',
+	'SIGNALING'    => 'SI',
 	'SPECIAL_EXIT' => 'SE',
 	'STOPPED'      => 'ST',
 	'SUSPENDED'    => 'S',
@@ -698,7 +708,11 @@ sub _GetInfo {
 		my $state = $job_info[3];
 		my $node  = $job_info[4];
 		my $cores = $job_info[6];
-		$state    = $known_job_states_long_to_short{$state};
+		if (defined $known_job_states_long_to_short{$state}) {
+			$state = $known_job_states_long_to_short{$state};
+		} else {
+			$state = '?';
+		}
 		
 		${$jobs}{$job}{'seen'}       = 1;
 		${$jobs}{$job}{'cluster'}    = $cluster;
@@ -2431,7 +2445,7 @@ sub _PrintHelpPad {
 	clrtoeol($subpad_content);
 	move($subpad_content, ++$line, 0);
 	
-	foreach my $known_job_state (keys(%known_job_states)) {
+	foreach my $known_job_state (sort(keys(%known_job_states))) {
 		if ($known_job_states{$known_job_state}{'consumes_resources'}) {
 			addstr($subpad_content, $indent . sprintf('              %-2s - %-12s: %s', $known_job_state, $known_job_states{$known_job_state}{'name'}, $known_job_states{$known_job_state}{'desc'}));
 			clrtoeol($subpad_content);
@@ -2443,7 +2457,7 @@ sub _PrintHelpPad {
 	clrtoeol($subpad_content);
 	move($subpad_content, ++$line, 0);
 	
-	foreach my $known_job_state (keys(%known_job_states)) {
+	foreach my $known_job_state (sort(keys(%known_job_states))) {
 		if (! $known_job_states{$known_job_state}{'consumes_resources'}) {
 			addstr($subpad_content, $indent . sprintf('              %-2s - %-12s: %s', $known_job_state, $known_job_states{$known_job_state}{'name'}, $known_job_states{$known_job_state}{'desc'}));
 			clrtoeol($subpad_content);
