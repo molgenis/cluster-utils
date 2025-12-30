@@ -415,7 +415,6 @@ function parseAndFormatRegularQuota() {
     # Fix grace reporting bug when grace has expired.
     # (Bug will result in ridiculous high grace value starting at 49697days and counting down.)
     #
-    
     if [[ "${_quota_values[8]}" =~ ${_regex} ]]; then
       _quota_values[8]='0days'
     fi
@@ -427,6 +426,53 @@ function parseAndFormatRegularQuota() {
     _quota_values=("${_quota_values[@]}" 'none')
   fi
   printQuota "${_quota_type}" "${_quota_values[@]}"
+}
+
+#
+# This function parses a single line of xfs_quota output
+# and formats the result using printf with a format as specified by the ${format} variable.
+#
+function parseAndFormatXfsQuota() {
+  local _quota_type="$1"
+  local _quota_report_line="$2"
+  local _bused
+  local _bquota
+  local _blimit
+  local _bgrace
+  local _iused
+  local _iquota
+  local _ilimit
+  local _igrace
+  local _fs
+  #
+  # Parse quota report line.
+  #
+  #Disk quotas for User umcg-pneerincx (50100292)
+  #Filesystem              Blocks      Quota      Limit  Warn/Time            Files      Quota      Limit  Warn/Time      Mounted on
+  #/dev/vda4              3144068    2097152    3145728   00  [6 days]          10         32         64   00 [--------] /
+  #
+  local _regex='^([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*\[([^]]*)\][[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)[[:blank:]][[:blank:]]*\[([^]]*)\][[:blank:]][[:blank:]]*([^[:blank:]][^[:blank:]]*)'
+  if [[ "${_quota_report_line}" =~ ${_regex} ]]; then
+    _blocks_used="${BASH_REMATCH[2]}"
+    _blocks_quota="${BASH_REMATCH[3]}"
+    _blocks_limit="${BASH_REMATCH[4]}"
+    _blocks_grace="${BASH_REMATCH[6]}"
+    _inodes_used="${BASH_REMATCH[7]}"
+    _inodes_quota="${BASH_REMATCH[8]}"
+    _inodes_limit="${BASH_REMATCH[9]}"
+    _inodes_grace="${BASH_REMATCH[11]}"
+    _fs="${BASH_REMATCH[12]}"
+  else
+    reportError "${LINENO}" '1' "Failed to parse output from xfs_quota tool: ${_quota_report_line}"
+  fi
+  if [[ "${_blocks_grace}" =~ --- ]]; then
+    _blocks_grace='none'
+  fi
+  if [[ "${_inodes_grace}" =~ --- ]]; then
+    _inodes_grace='none'
+  fi
+  quota_report_header=$(printf "${format}" 'T' 'Path/Filesystem' 'used' 'quota' 'limit' 'grace' 'used' 'quota' 'limit' 'grace' 'Status')
+  printQuota "${_quota_type}" "${_fs}" "${_blocks_used}" "${_blocks_quota}" "${_blocks_limit}" "${_blocks_grace}" "${_inodes_used}" "${_inodes_quota}" "${_inodes_limit}" "${_inodes_grace}"
 }
 
 #
@@ -464,7 +510,10 @@ function printQuota() {
     if [[ "${_quota_values[${offset}]}" == '-' ]]; then
       _quota_values[${offset}]='none'
     fi
-    _quota_values[${offset}]=${_quota_values[${offset}]/day/ day}
+    _regex='[^[:blank:]]day'
+    if [[ "${_quota_values[${offset}]}" =~ ${_regex} ]]; then 
+      _quota_values[${offset}]=${_quota_values[${offset}]/day/ day}
+    fi
     if [[ "${_quota_values[${offset}]}" != 'none' && "${_quota_values[${offset}]}" != '?' ]]; then
       _status="${QUOTA_EXCEEDED_WARNING}"
     fi
@@ -763,6 +812,26 @@ if [[ -n ${quota_user_report:-} ]]; then
     parseAndFormatRegularQuota 'U' "${quota_report_line}"
   done
   IFS="${IFS_BAK}"
+fi
+#
+# Display relevant regular user quota for XFS root file system.
+# 
+# Only used
+#  * for some systems 
+#  * for local XFS file systems 
+#  * under control of the xfs_quota tool.
+#
+#Disk quotas for User umcg-someuser (30300892)
+#Filesystem   Blocks  Quota  Limit Warn/Time      Files  Quota  Limit Warn/Time    Mounted on
+#/dev/vda4         0     2G     3G  00 [------]       0     32     64  00 [------] /
+set +e
+trap - ERR
+user_xfs_quota="$(xfs_quota -x -c "quota -b -i -h -N -u ${USER}" / 2> /dev/null)"
+trap 'reportError $LINENO' ERR
+set -e
+if [[ -n ${user_xfs_quota:-} ]]; then
+  echo "${SEP_SINGLE}"
+  parseAndFormatXfsQuota 'U' "${user_xfs_quota}"
 fi
 
 #
