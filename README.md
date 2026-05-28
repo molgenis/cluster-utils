@@ -29,6 +29,10 @@ Tools to get reports on authentication & authorization settings and identities.
 - [quota](#-quota): Lists quota for all shared file systems.
 - [hpc-environment-quota-report-for-PFS](#-hpc-environment-quota-report-for-pfs): Creates quota report for admins.
 
+### Tools for monitoring memory usage
+
+- [swapstat](#-swapstat): Lists all processes using swap space.
+
 #### <a name="caccounts"/> caccounts
 
 Wrapper for Slurm's sacctmgr command with custom output format to list which users are associated to which slurm accounts on which clusters.
@@ -382,7 +386,45 @@ Custom quota reporting tool for users. Lists quota for all groups a user is a me
 ```
 #### <a name="hpc-environment-quota-report-for-pfs"/> hpc-environment-quota-report-for-PFS
 
-Custom quota reporting tool for admins. Lists quota for all groups on a Physical File System (PFS). Output is similar to that from the quota tool listed above.
+Custom quota reporting tool for admins. Lists quota for all groups on a Physical File System (PFS).
+Output is similar to that from the quota tool listed above.
+
+#### <a name="swapstat"/> swapstat
+
+Lists all processes using swap space followed by a summary of memory usage created with the `free` command.
+
+ * When executed as regular user, shared swap sapce is completely added to the amount used by each process using that shared swap space.
+   Hence the amount of shared swap may be counted twice or more causing an inflated _total_.
+ * When executed as `root` we can read `SwapPSS` (Proportional Set Size of swap),
+   where shared swap space is divided proportionally over processes that share it
+   providing a more accurate picture of a process's actual swap space footprint.
+   The reported total `SwapPSS` used may still be slightly off compared to swap usage reported by `free`.
+
+Example output when executed by `root`:
+```
+==================================================================================
+SwapPSS used (kB)         PID   Process Name                     User
+----------------------------------------------------------------------------------
+              136      103803   screen                           user1
+             2348      109635   systemd                          user2
+             4600      109636   (sd-pam)                         user2
+             1808      263180   tmux: server                     user2
+             5912      263181   bash                             user2
+             1896      325983   systemd                          user3
+             4552      325984   (sd-pam)                         user3
+             9456      569971   R                                user2
+           880248      783628   python                           user2
+              116     1011144   screen                           user3
+             1740     1247315   code-f6cfa2ea24                  user2
+----------------------------------------------------------------------------------
+Total SwapPSS memory usage:         912812 kB
+----------------------------------------------------------------------------------
+free -k:
+               total        used        free      shared  buff/cache   available
+Mem:        65316528    13183016    38425248        4992    14441636    52133512
+Swap:        4194300      952912     3214388
+==================================================================================
+```
 
 ## 2. How to use this repo and contribute.
 

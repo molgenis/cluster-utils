@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 #
 # When executed as root we can read SwapPSS (Proportional Set Size of swap),
@@ -14,10 +14,10 @@ fi
 #
 # Print header
 #
-printf -- '=%.0s' {1..82}
+printf -- '=%.0s' {1..85}
 echo
 printf '%17s   %9s   %-30s   %-20s\n' "${_swap_label} used (kB)" 'PID' 'Process Name'   'User'
-printf -- '-%.0s' {1..82}
+printf -- '-%.0s' {1..85}
 echo
 #
 # Print swap usage per process
@@ -32,7 +32,7 @@ for _pid_dir in "${_pid_dirs[@]}"; do
 	declare _uid=''
 	declare _user=''
 	{
-	while read _field _value; do
+	while read -r _field _value; do
 		case "${_field}" in
 			Pid:)
 				_pid="${_value}"
@@ -52,7 +52,8 @@ for _pid_dir in "${_pid_dirs[@]}"; do
 	} 2>/dev/null
 	if [[ "${_swap_usage}" -gt 0 ]]; then
 		if [[ "${_pss}" -eq 1 ]]; then
-			declare _swap_proportional_set_size_usage="$(grep -F 'SwapPss:' "${_pid_dir}/smaps_rollup" | grep -o '[[:digit:]]*')"
+			declare _swap_proportional_set_size_usage
+			_swap_proportional_set_size_usage="$(grep -F 'SwapPss:' "${_pid_dir}/smaps_rollup" | grep -o '[[:digit:]]*')"
 			if [[ "${_swap_proportional_set_size_usage}" -gt 0 ]]; then
 				_swap_usage="${_swap_proportional_set_size_usage}"
 			fi
@@ -65,12 +66,12 @@ done
 #
 # Print totals
 #
-printf -- '-%.0s' {1..82}
+printf -- '-%.0s' {1..85}
 echo
 printf "Total %s memory usage: %14u kB\n" "${_swap_label}" "${_total}"
-printf -- '-%.0s' {1..82}
+printf -- '-%.0s' {1..85}
 echo
 echo 'free -k:'
 free -k
-printf -- '=%.0s' {1..82}
+printf -- '=%.0s' {1..85}
 echo
