@@ -7,7 +7,7 @@
 #
 declare _pss=0
 declare _swap_label='Swap'
-if [[ $EUID -eq 0 ]]; then
+if [[ "${EUID}" -eq 0 ]]; then
 	_pss=1
 	_swap_label='SwapPSS'
 fi
@@ -33,6 +33,7 @@ for _pid_dir in "${_pid_dirs[@]}"; do
 	declare _user=''
 	{
 	while read -r _field _value; do
+		# shellcheck disable=SC2249
 		case "${_field}" in
 			Pid:)
 				_pid="${_value}"
