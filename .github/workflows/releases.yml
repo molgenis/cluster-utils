@@ -1,0 +1,175 @@
+name: New release action
+run-name: ${{ github.repository }} release ${{ github.ref_name }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  CreateEasyConfigForRelease:
+    name: Create EasyConfig in take-it-easyconfig repo for new release.
+    runs-on: ubuntu-slim
+    environment: releases
+    steps:
+      - name: Send pull-request
+        run: |
+              #
+              # In order for this code to work we need:
+              #  * The team invited to review the PR must be public.
+              #  * The bot account used to create the PR:
+              #     * Must NOT be a member of the team invited to review the PR.
+              #     * Must have a Personal Access Token (PAT)
+              #        * Resource owner: ORGANISTION
+              #        * with permissions/scope on REPOSITORY where the PR will be created - Contents: read & write
+              #        * with permissions/scope on REPOSITORY where the PR will be created - Pull requests: read only
+              #          This will automagically also assign:
+              #        * with permissions/scope on REPOSITORY where the PR will be created - Metadata: read only
+              #        * with permissions/scope on the ORGANISATION - Members: read only
+              #        * with permissions/scope on the ORGANISATION - Projects: read only
+              #  * The PAT created for the bot account with "resource owner" ORGANISATION
+              #    will create a request for approval of that PAT in the ORGANISATION;
+              #    An ORGANISATION admin needs to approve the PAT before it can be used.
+              #  * The value of the PAT must be added as secret for the REPOSITORY repo
+              #    and in the scope of an environment named "releases".
+              #
+              export GH_TELEMETRY=false
+              ORGANISATION='molgenis'
+              REPOSITORY='take-it-easyconfigs'
+              MODULE_NAME="${{ github.event.repository.name }}"
+              MODULE_NAME_LOWERCASE="${MODULE_NAME,,}"
+              MODULE_VERSION="${{ github.ref_name }}"
+              TOOLCHAIN_NAME='GCCcore'
+              TOOLCHAIN_VERSION='13.3.0'
+              MODULE_SPEC="${MODULE_NAME}/${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}"
+              EASYCONFIG_PATH="${MODULE_NAME_LOWERCASE:0:1}/${MODULE_NAME}/${MODULE_NAME}-${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}.eb"
+              CHECKSUM="$(curl -sL "${{ github.server_url }}/${{ github.repository }}/archive/refs/tags/${{ github.ref_name }}.tar.gz" | shasum -a 256 | cut -d " " -f 1)"
+              #
+              # Clone the remote repository.
+              #
+              git clone \
+                  --depth=1 \
+                  --branch=main \
+                  "https://github.com/${ORGANISATION}/${REPOSITORY}.git"
+              cd "${REPOSITORY}"
+              #
+              # Configure committer identity.
+              #
+              git config user.email 'analysis-jenkins[bot]@users.noreply.github.com'
+              git config user.name 'analysis-jenkins[bot]'
+              git config 'url.https://${{ secrets.TAKE_IT_EASYCONFIGS_PAT }}@github.com/.insteadOf' 'https://github.com/'
+              #
+              # Create a new feature branch for the changes.
+              #
+              git checkout -b "${MODULE_SPEC}"
+              #
+              # Create/update the EasyConfig.
+              #
+              cat << ENDOFEASYCONFIG > "${EASYCONFIG_PATH}"
+              name = '${MODULE_NAME}'
+              version = '${MODULE_VERSION}'
+
+              homepage = 'https://github.com/${ORGANISATION}/${MODULE_NAME}/'
+              description = """Utilities for cluster users."""
+
+              toolchain = {'name': '${TOOLCHAIN_NAME}', 'version': '${TOOLCHAIN_VERSION}'}
+              easyblock = 'CmdCp'
+
+              source_urls = [('https://github.com/${ORGANISATION}/%s/archive/' % (name))]
+              sources = [('%s.tar.gz' % (version))]
+              checksums = [('sha256', '${CHECKSUM}')]
+
+              dependencies = [
+                  ('ncurses', '6.5'),                # For ctop.
+                  ('Curses', '1.45', '-Perl-5.38.2') # For ctop.
+              ]
+
+              local_executables = [
+                  'caccounts',
+                  'cfinger',
+                  'cnodes',
+                  'cprio',
+                  'cps',
+                  'cqos',
+                  'cqueue',
+                  'cshare',
+                  'ctop',
+                  'colleagues',
+                  'quota',
+                  'sjeff',
+                  'swapstat'
+              ]
+
+              files_to_copy = [
+                  'README.md',
+                  'LICENSE',
+                  (['bin/*'], 'bin/')
+              ]
+
+              #
+              # We don't really need a command for the install step,
+              # but as we have to have one in order to recycle the CmdCp easyblock... just ls.
+              #
+              cmds_map = [('.*', "echo 'Skipping install command.'")]
+
+              #
+              # Make scripts executable.
+              # (Mode may by masked by umask.)
+              #
+              postinstallcmds = [
+                  'chmod -R g+rwX,o+rX,o-w "%(installdir)s/"*',
+                  'chmod a+x "%(installdir)s/bin/"* ',
+                  'rm %(installdir)s/bin/sjload*',
+                  'rm %(installdir)s/bin/hpc-environment*',
+              ]
+
+              #
+              # Sanity checking.
+              #
+              sanity_check_paths = {
+                  'files': ['README.md'] + ['bin/%s' % x for x in local_executables],
+                  'dirs': ['bin']
+              }
+              sanity_check_commands = [('quota', '-h')]
+
+              moduleclass = 'tools'
+
+              ENDOFEASYCONFIG
+              echo '=============================================='
+              #
+              # Commit changes and push feature branch to origin.
+              #
+              git status
+              echo '=============================================='
+              git add "${EASYCONFIG_PATH}"
+              git commit -m "New/updated EasyConfig for ${MODULE_SPEC}."
+              echo '=============================================='
+              git status
+              echo '=============================================='
+              git pull origin
+              git push --force --set-upstream origin "${MODULE_SPEC}"
+              echo '=============================================='
+              git status
+              echo '=============================================='
+              #
+              # Authorize GitHub CLI and create PR.
+              #
+              gh config set telemetry disabled
+              echo "${{ secrets.TAKE_IT_EASYCONFIGS_PAT }}" | gh auth login --with-token
+              echo '=============================================='
+              gh pr edit \
+                  "${MODULE_SPEC}" \
+                  --body '' \
+                  --title "Auto PR: New/updated EasyConfig for ${MODULE_SPEC}." \
+                  --add-reviewer 'molgenis/analysis-team' \
+                && gh pr reopen "${MODULE_SPEC}" \
+                || gh pr create \
+                  --body '' \
+                  --title "Auto PR: New/updated EasyConfig for ${MODULE_SPEC}." \
+                  --head "${MODULE_SPEC}" \
+                  --base 'main' \
+                  --reviewer 'molgenis/analysis-team'
