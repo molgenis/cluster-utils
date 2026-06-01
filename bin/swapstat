@@ -1,0 +1,78 @@
+#!/bin/bash
+
+#
+# When executed as root we can read SwapPSS (Proportional Set Size of swap),
+# where shared swap space is divided proportionally over processes that share it
+# providing a more accurate picture of a process's actual swap space footprint.
+#
+declare _pss=0
+declare _swap_label='Swap'
+if [[ "${EUID}" -eq 0 ]]; then
+	_pss=1
+	_swap_label='SwapPSS'
+fi
+#
+# Print header
+#
+printf -- '=%.0s' {1..85}
+echo
+printf '%17s   %9s   %-30s   %-20s\n' "${_swap_label} used (kB)" 'PID' 'Process Name'   'User'
+printf -- '-%.0s' {1..85}
+echo
+#
+# Print swap usage per process
+#
+declare _total=0
+readarray -d '' _pid_dirs < <(find /proc/ -maxdepth 1 -type d -name '[0-9]*' -print0)
+for _pid_dir in "${_pid_dirs[@]}"; do
+	declare _sum=0
+	declare _pid=''
+	declare _process_name=''
+	declare _swap_usage=0
+	declare _uid=''
+	declare _user=''
+	{
+	while read -r _field _value; do
+		# shellcheck disable=SC2249
+		case "${_field}" in
+			Pid:)
+				_pid="${_value}"
+				;;
+			Name:)
+				_process_name="${_value}"
+				;;
+			Uid:)
+				_uid="${_value%%[[:blank:]]*}"
+				;;
+			VmSwap:)
+				_swap_usage="${_value%% *}"
+				break
+				;;
+		esac
+	done < "${_pid_dir}/status"
+	} 2>/dev/null
+	if [[ "${_swap_usage}" -gt 0 ]]; then
+		if [[ "${_pss}" -eq 1 ]]; then
+			declare _swap_proportional_set_size_usage
+			_swap_proportional_set_size_usage="$(grep -F 'SwapPss:' "${_pid_dir}/smaps_rollup" | grep -o '[[:digit:]]*')"
+			if [[ "${_swap_proportional_set_size_usage}" -gt 0 ]]; then
+				_swap_usage="${_swap_proportional_set_size_usage}"
+			fi
+		fi
+		_user="$(id -un "${_uid}")"
+		printf '%17d   %9d   %-30s   %-20s\n' "${_swap_usage}" "${_pid}" "${_process_name}" "${_user}"
+		_total=$((${_total}+${_swap_usage}))
+	fi
+done
+#
+# Print totals
+#
+printf -- '-%.0s' {1..85}
+echo
+printf "Total %s memory usage: %14u kB\n" "${_swap_label}" "${_total}"
+printf -- '-%.0s' {1..85}
+echo
+echo 'free -k:'
+free -k
+printf -- '=%.0s' {1..85}
+echo
