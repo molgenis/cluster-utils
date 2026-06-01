@@ -45,7 +45,8 @@ jobs:
               MODULE_VERSION="${{ github.ref_name }}"
               TOOLCHAIN_NAME='GCCcore'
               TOOLCHAIN_VERSION='13.3.0'
-              BRANCH="${MODULE_NAME}/${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}"
+              MODULE_SPEC="${MODULE_NAME}/${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}"
+              EASYCONFIG_PATH="${MODULE_NAME_LOWERCASE:0:1}/${MODULE_NAME}/${MODULE_NAME}-${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}.eb"
               CHECKSUM="$(curl -sL "${{ github.server_url }}/${{ github.repository }}/archive/refs/tags/${{ github.ref_name }}.tar.gz" | shasum -a 256 | cut -d " " -f 1)"
               #
               # Clone the remote repository.
@@ -64,11 +65,11 @@ jobs:
               #
               # Create a new feature branch for the changes.
               #
-              git checkout -b "${BRANCH}"
+              git checkout -b "${MODULE_SPEC}"
               #
               # Create/update the EasyConfig.
               #
-              cat << ENDOFEASYCONFIG > "${MODULE_NAME_LOWERCASE:0:1}/${MODULE_NAME}/${MODULE_NAME}-${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}.eb"
+              cat << ENDOFEASYCONFIG > "${EASYCONFIG_PATH}"
               name = '${MODULE_NAME}'
               version = '${MODULE_VERSION}'
 
@@ -144,13 +145,13 @@ jobs:
               #
               git status
               echo '=============================================='
-              git add "${MODULE_NAME:0:1}/${MODULE_NAME}/${MODULE_NAME}-${MODULE_VERSION}.eb"
-              git commit -m "New/updated EasyConfig for ${MODULE_NAME}/${MODULE_VERSION}."
+              git add "${EASYCONFIG_PATH}"
+              git commit -m "New/updated EasyConfig for ${MODULE_SPEC}."
               echo '=============================================='
               git status
               echo '=============================================='
               git pull origin
-              git push --force --set-upstream origin "${BRANCH}"
+              git push --force --set-upstream origin "${MODULE_SPEC}"
               echo '=============================================='
               git status
               echo '=============================================='
@@ -161,14 +162,14 @@ jobs:
               echo "${{ secrets.TAKE_IT_EASYCONFIGS_PAT }}" | gh auth login --with-token
               echo '=============================================='
               gh pr edit \
-                  "${BRANCH}" \
+                  "${MODULE_SPEC}" \
                   --body '' \
-                  --title "Auto PR: New/updated EasyConfig for ${MODULE_NAME}/${MODULE_VERSION}." \
+                  --title "Auto PR: New/updated EasyConfig for ${MODULE_SPEC}." \
                   --add-reviewer 'molgenis/analysis-team' \
-                && gh pr reopen "${BRANCH}" \
+                && gh pr reopen "${MODULE_SPEC}" \
                 || gh pr create \
                   --body '' \
-                  --title "Auto PR: New/updated EasyConfig for ${MODULE_NAME}/${MODULE_VERSION}." \
-                  --head "${BRANCH}" \
+                  --title "Auto PR: New/updated EasyConfig for ${MODULE_SPEC}." \
+                  --head "${MODULE_SPEC}" \
                   --base 'main' \
                   --reviewer 'molgenis/analysis-team'
