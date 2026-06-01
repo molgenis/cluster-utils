@@ -45,7 +45,7 @@ jobs:
               MODULE_VERSION="${{ github.ref_name }}"
               TOOLCHAIN_NAME='GCCcore'
               TOOLCHAIN_VERSION='13.3.0'
-              BRANCH="${MODULE_NAME}/${MODULE_VERSION}"
+              BRANCH="${MODULE_NAME}/${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}"
               CHECKSUM="$(curl -sL "${{ github.server_url }}/${{ github.repository }}/archive/refs/tags/${{ github.ref_name }}.tar.gz" | shasum -a 256 | cut -d " " -f 1)"
               #
               # Clone the remote repository.
