@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   CreateEasyConfigForRelease:
-    name: Create EasyConfig in take-it-easyconfig repo for new depad-utils release.
+    name: Create EasyConfig in take-it-easyconfig repo for new release.
     runs-on: ubuntu-slim
     environment: releases
     steps:
@@ -41,7 +41,10 @@ jobs:
               ORGANISATION='molgenis'
               REPOSITORY='take-it-easyconfigs'
               MODULE_NAME="${{ github.event.repository.name }}"
+              MODULE_NAME_LOWERCASE="${MODULE_NAME,,}"
               MODULE_VERSION="${{ github.ref_name }}"
+              TOOLCHAIN_NAME='GCCcore'
+              TOOLCHAIN_VERSION='13.3.0'
               BRANCH="${MODULE_NAME}/${MODULE_VERSION}"
               CHECKSUM="$(curl -sL "${{ github.server_url }}/${{ github.repository }}/archive/refs/tags/${{ github.ref_name }}.tar.gz" | shasum -a 256 | cut -d " " -f 1)"
               #
@@ -65,14 +68,14 @@ jobs:
               #
               # Create/update the EasyConfig.
               #
-              cat << ENDOFEASYCONFIG > "${MODULE_NAME:0:1}/${MODULE_NAME}/${MODULE_NAME}-${MODULE_VERSION}.eb"
+              cat << ENDOFEASYCONFIG > "${MODULE_NAME_LOWERCASE:0:1}/${MODULE_NAME}/${MODULE_NAME}-${MODULE_VERSION}-${TOOLCHAIN_NAME}-${TOOLCHAIN_VERSION}.eb"
               name = '${MODULE_NAME}'
               version = '${MODULE_VERSION}'
 
               homepage = 'https://github.com/${ORGANISATION}/${MODULE_NAME}/'
               description = """Utilities for cluster users."""
 
-              toolchain = {'name': 'GCCcore', 'version': '13.3.0'}
+              toolchain = {'name': '${TOOLCHAIN_NAME}', 'version': '${TOOLCHAIN_VERSION}'}
               easyblock = 'CmdCp'
 
               source_urls = [('https://github.com/${ORGANISATION}/%s/archive/' % (name))]
@@ -107,7 +110,7 @@ jobs:
               ]
 
               #
-              # We don't really need a command to install depad-utils, 
+              # We don't really need a command for the install step,
               # but as we have to have one in order to recycle the CmdCp easyblock... just ls.
               #
               cmds_map = [('.*', "echo 'Skipping install command.'")]
