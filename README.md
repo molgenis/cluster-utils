@@ -249,12 +249,13 @@ validateConvading_s09b_Convading_1            |    05:59:00     1.50 |          
 Wrapper for Slurm's sinfo command with custom output format to list all compute nodes and their state.
 Example output:
 ```
-PARTITION    AVAIL  NODES  STATE  S:C:T   CPUS  MAX_CPUS_PER_NODE  MEMORY  TMP_DISK  FEATURES                      GROUPS  TIMELIMIT   JOB_SIZE  ALLOCNODES  NODELIST            REASON
-duo-pro*     up     8      mixed  8:6:1   48    46                 258299  1063742   umcg,ll,tmp02,tmp04           all     7-00:01:00  1         all         umcg-node[011-018]  none
-duo-dev      up     1      mixed  8:6:1   48    46                 258299  1063742   umcg,ll,tmp02,tmp04           all     7-00:01:00  1         all         umcg-node019        none
-duo-dev      up     1      idle   8:6:1   48    46                 258299  1063742   umcg,ll,tmp02,tmp04           all     7-00:01:00  1         all         umcg-node020        none
-duo-ds-umcg  up     1      idle   2:12:1  24    12                 387557  1063742   umcg,tmp02,tmp04,prm02,prm03  all     7-00:01:00  1         all         calculon            none
-duo-ds-ll    up     1      idle   2:1:1   2     2                  7872    0         ll,tmp04,prm02,prm03          all     7-00:01:00  1         all         lifelines           none
+PARTITION       NODES  STATE  WEIGHT  S:C:T   MAX_CPUS_PER_NODE  MAX_MEM_PER_NODE  TMP_DISK  FEATURES                 TIMELIMIT   NODELIST          REASON
+cpu_r6515       3      mixed  5       1:64:1  62                 498473            3002000   rsc02,tmp02              7-00:01:00  nb-node-a[01-03]  none
+cpu_r6515       1      idle   5       1:64:1  62                 498473            3002000   rsc02,tmp02              7-00:01:00  nb-node-a04       none
+gpu_a40         1      mixed  10      1:64:1  62                 240416            1420000   a40,gpu,rsc02,tmp02      7-00:01:00  nb-node-b01       none
+cpu_r630*       1      mixed  1       2:14:1  26                 250149            3002000   rsc02,tmp02              7-00:01:00  nb-node-c11       none
+cpu_r630*       10     idle   1       2:14:1  26                 250149            3002000   rsc02,tmp02              7-00:01:00  nb-node-c[01-10]  none
+user_interface  1      idle   1       16:1:1  10                 57641             0         prm02,prm03,rsc02,tmp02  7-00:01:00  nibbler           none
 ```
 
 #### <a name="cqos"/> cqos

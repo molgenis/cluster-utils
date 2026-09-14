@@ -7,4 +7,18 @@ set -o pipefail
 ### Wrapper for sinfo with custom output format.
 ##
 #
-sinfo "${@}" -o "%P|%a|%D|%T|%w|%z|%c|%B|%m|%d|%f|%l|%s|%N|%E" | column -t -s '|'
+{
+    printf '%s\n' 'PARTITION|NODES|STATE|WEIGHT|S:C:T|MAX_CPUS_PER_NODE|MAX_MEM_PER_NODE|TMP_DISK|FEATURES|TIMELIMIT|NODELIST|REASON'
+
+    sinfo "${@}" -h -o "%P|%D|%T|%w|%z|%d|%f|%l|%N|%E" |
+    while IFS='|' read -r partition nodes state weight sct tmpdisk features timelimit nodelist reason; do
+
+        max_cpus=$(scontrol show node "${nodelist}" 2>/dev/null | grep -oP 'CPUEfctv=\K[^ ]*' | sort -nu | paste -sd, -)
+        realmem=$(scontrol show node "${nodelist}" 2>/dev/null | grep -oP 'RealMemory=\K[0-9]+' | sort -nu | paste -sd, -)
+        memspec=$(scontrol show node "${nodelist}" 2>/dev/null | grep -oP 'MemSpecLimit=\K[0-9]+' | sort -nu | paste -sd, -)
+        max_mem=$(("${realmem}" - "${memspec}"))
+
+        printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            "${partition}" "${nodes}" "${state}" "${weight}" "${sct}" "${max_cpus}" "${max_mem}" "${tmpdisk}" "${features}" "${timelimit}" "${nodelist}" "${reason}"
+    done
+} | column -t -s '|'
