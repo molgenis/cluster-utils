@@ -1,0 +1,35 @@
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+declare main_group="${1}"
+
+readarray -t _file_systems < <(find "/groups/${main_group}/" -maxdepth 1 -mindepth 1 -regextype posix-extended -regex '.*((prm)|(rsc)|(tmp)).*' | sort -u)
+
+for _file_system in "${_file_systems[@]}"; do
+	echo -n "Gathering disk usage for sub group folders in ${_file_system}/projects/ ..."
+	if [[ -e "${_file_system}/projects/" ]]; then
+		readarray -t _sub_group_folders < <(find "${_file_system}/projects/" -maxdepth 1 -mindepth 1 -type d | sort -u)
+		_result='sub-group    folder    disk-usage'
+		for _sub_group_folder in "${_sub_group_folders[@]}"; do
+			_group="$(stat -c "%G" "${_sub_group_folder}")"
+			_usage="$(cd "${_file_system}/projects/"; \
+					lfs quota -h -g "${_group}" "${_sub_group_folder##*/}" 2>/dev/null \
+					| grep -v 'is using default' \
+					| grep -F -A2 'used' \
+					| grep -F -v 'used' \
+					| tr -d '\n'\
+					| awk '{print $1, $2}' \
+					|| echo 'ERROR: failed to retrieve disk usage using" lfs quota" command.')"
+			_result+="\n${_group}    ${_usage}"
+			echo -n '.'
+		done
+		echo
+		echo -e "${_result}" | column -t
+	else
+		echo "Skipping: ${_file_system}/projects/ does not exist."
+	fi
+done
+
